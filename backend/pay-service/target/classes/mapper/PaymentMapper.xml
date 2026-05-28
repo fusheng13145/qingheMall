@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.pay.mapper.PaymentMapper">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.pay.entity.Payment">
+        <id column="id" property="id"/>
+        <result column="payment_no" property="paymentNo"/>
+        <result column="order_id" property="orderId"/>
+        <result column="order_no" property="orderSn"/>
+        <result column="user_id" property="userId"/>
+        <result column="amount" property="amount"/>
+        <result column="pay_type" property="payType"/>
+        <result column="status" property="status"/>
+        <result column="pay_time" property="payTime"/>
+        <result column="notify_time" property="notifyTime"/>
+        <result column="notify_data" property="notifyData"/>
+        <result column="trade_no" property="tradeNo"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.qinghe.mall.pay.entity.Payment" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO payment (payment_no, order_id, order_no, user_id, amount, pay_type, status, create_time, update_time)
+        VALUES (#{paymentNo}, #{orderId}, #{orderSn}, #{userId}, #{amount}, #{payType}, #{status}, NOW(), NOW())
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT * FROM payment WHERE id = #{id}
+    </select>
+
+    <select id="selectByOrderId" resultMap="BaseResultMap">
+        SELECT * FROM payment WHERE order_id = #{orderId} LIMIT 1
+    </select>
+
+    <update id="updatePayStatus">
+        UPDATE payment 
+        SET status = #{payStatus}, trade_no = #{tradeNo}, notify_data = #{notifyData},
+            notify_time = NOW(), update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateByOrderId">
+        UPDATE payment 
+        SET status = #{payStatus}, trade_no = #{tradeNo}, notify_data = #{notifyData},
+            notify_time = NOW(), update_time = NOW()
+        WHERE order_id = #{orderId}
+    </update>
+
+</mapper>

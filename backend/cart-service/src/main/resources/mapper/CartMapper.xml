@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.cart.mapper.CartMapper">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.cart.entity.Cart">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="goods_id" property="goodsId"/>
+        <result column="sku_id" property="skuId"/>
+        <result column="goods_name" property="goodsName"/>
+        <result column="goods_image" property="goodsImage"/>
+        <result column="price" property="price"/>
+        <result column="quantity" property="quantity"/>
+        <result column="checked" property="checked"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="findByUserId" resultMap="BaseResultMap">
+        SELECT * FROM cart WHERE user_id = #{userId} ORDER BY update_time DESC
+    </select>
+
+    <select id="findByUserIdAndGoodsId" resultMap="BaseResultMap">
+        SELECT * FROM cart WHERE user_id = #{userId} AND goods_id = #{goodsId} LIMIT 1
+    </select>
+
+    <insert id="insert" parameterType="com.qinghe.mall.cart.entity.Cart" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cart (user_id, goods_id, sku_id, goods_name, goods_image, price, quantity, checked, create_time, update_time)
+        VALUES (#{userId}, #{goodsId}, #{skuId}, #{goodsName}, #{goodsImage}, #{price}, #{quantity}, #{checked}, NOW(), NOW())
+    </insert>
+
+    <update id="updateQuantity">
+        UPDATE cart SET quantity = #{quantity}, update_time = NOW() WHERE id = #{id}
+    </update>
+
+    <update id="updateChecked">
+        UPDATE cart SET checked = #{checked}, update_time = NOW() WHERE id = #{id}
+    </update>
+
+    <update id="updateCheckedByUserId">
+        UPDATE cart SET checked = #{checked}, update_time = NOW() WHERE user_id = #{userId}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM cart WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByUserId">
+        DELETE FROM cart WHERE user_id = #{userId}
+    </delete>
+
+</mapper>

@@ -1,0 +1,11 @@
+com\qinghe\mall\cart\controller\CartController.class
+com\qinghe\mall\cart\dto\CartAddDTO.class
+com\qinghe\mall\cart\mapper\CartMapper.class
+com\qinghe\mall\cart\service\CartServiceImpl.class
+com\qinghe\mall\cart\client\GoodsClient.class
+com\qinghe\mall\cart\service\CartService.class
+com\qinghe\mall\cart\client\GoodsClientFallback.class
+com\qinghe\mall\cart\entity\Cart.class
+com\qinghe\mall\cart\CartServiceApplication.class
+com\qinghe\mall\cart\dto\CartUpdateDTO.class
+com\qinghe\mall\cart\dto\CartItemVO.class

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.goods.mapper.GoodsMapper">
+
+    <resultMap id="GoodsDTOResultMap" type="com.qinghe.mall.goods.dto.GoodsDTO">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="category_id" property="categoryId"/>
+        <result column="price" property="price"/>
+        <result column="original_price" property="originalPrice"/>
+        <result column="stock" property="stock"/>
+        <result column="image" property="image"/>
+        <result column="sales" property="sales"/>
+        <result column="status" property="status"/>
+    </resultMap>
+
+    <select id="selectGoodsPage" resultMap="GoodsDTOResultMap">
+        SELECT id, name, category_id, price, original_price, stock, image, sales, status
+        FROM goods
+        WHERE status = 1
+        <if test="categoryId != null">
+            AND category_id = #{categoryId}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (name LIKE CONCAT('%', #{keyword}, '%') OR description LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY sales DESC, id DESC
+        LIMIT #{pageNum}, #{pageSize}
+    </select>
+
+    <select id="countGoods" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM goods
+        WHERE status = 1
+        <if test="categoryId != null">
+            AND category_id = #{categoryId}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (name LIKE CONCAT('%', #{keyword}, '%') OR description LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </select>
+
+    <resultMap id="GoodsResultMap" type="com.qinghe.mall.goods.entity.Goods">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="category_id" property="categoryId"/>
+        <result column="price" property="price"/>
+        <result column="original_price" property="originalPrice"/>
+        <result column="stock" property="stock"/>
+        <result column="image" property="image"/>
+        <result column="images" property="images"/>
+        <result column="description" property="description"/>
+        <result column="sales" property="sales"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="selectById" resultMap="GoodsResultMap">
+        SELECT id, name, category_id, price, original_price, stock, image, images, description, sales, status, create_time, update_time
+        FROM goods
+        WHERE id = #{id}
+    </select>
+
+    <update id="updateStock">
+        UPDATE goods
+        SET stock = #{stock}, update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="countByCategoryId" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM goods
+        WHERE category_id = #{categoryId} AND status = 1
+    </select>
+
+</mapper>

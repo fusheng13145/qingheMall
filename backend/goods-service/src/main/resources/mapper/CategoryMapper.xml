@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.goods.mapper.CategoryMapper">
+
+    <resultMap id="CategoryVOResultMap" type="com.qinghe.mall.goods.vo.CategoryVO">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="parent_id" property="parentId"/>
+        <result column="level" property="level"/>
+        <result column="icon" property="icon"/>
+        <result column="sort" property="sort"/>
+    </resultMap>
+
+    <select id="selectRootCategories" resultMap="CategoryVOResultMap">
+        SELECT id, name, parent_id, level, icon, sort
+        FROM category
+        WHERE parent_id = 0 AND level = 1
+        ORDER BY sort ASC, id ASC
+    </select>
+
+    <select id="selectByParentId" resultMap="CategoryVOResultMap">
+        SELECT id, name, parent_id, level, icon, sort
+        FROM category
+        WHERE parent_id = #{parentId}
+        ORDER BY sort ASC, id ASC
+    </select>
+
+    <resultMap id="CategoryResultMap" type="com.qinghe.mall.goods.entity.Category">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="parent_id" property="parentId"/>
+        <result column="level" property="level"/>
+        <result column="icon" property="icon"/>
+        <result column="sort" property="sort"/>
+    </resultMap>
+
+    <select id="selectById" resultMap="CategoryResultMap">
+        SELECT id, name, parent_id, level, icon, sort
+        FROM category
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectAll" resultMap="CategoryResultMap">
+        SELECT id, name, parent_id, level, icon, sort
+        FROM category
+        ORDER BY level ASC, sort ASC, id ASC
+    </select>
+
+</mapper>

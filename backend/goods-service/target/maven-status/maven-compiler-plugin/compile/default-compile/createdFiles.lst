@@ -1,0 +1,15 @@
+com\qinghe\mall\goods\vo\GoodsDetailVO.class
+com\qinghe\mall\goods\service\impl\GoodsServiceImpl.class
+com\qinghe\mall\goods\mapper\CategoryMapper.class
+com\qinghe\mall\goods\controller\CategoryController.class
+com\qinghe\mall\goods\mapper\GoodsMapper.class
+com\qinghe\mall\goods\service\GoodsService.class
+com\qinghe\mall\goods\vo\CategoryVO.class
+com\qinghe\mall\goods\controller\GoodsController.class
+com\qinghe\mall\goods\dto\GoodsDTO.class
+com\qinghe\mall\goods\entity\Category.class
+com\qinghe\mall\goods\GoodsServiceApplication.class
+com\qinghe\mall\goods\service\CategoryService.class
+com\qinghe\mall\goods\entity\Goods.class
+com\qinghe\mall\goods\service\impl\CategoryServiceImpl.class
+com\qinghe\mall\goods\vo\PageResult.class

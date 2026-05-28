@@ -1,0 +1,9 @@
+com\qinghe\mall\pay\dto\PayVO.class
+com\qinghe\mall\pay\service\OrderRemoteService.class
+com\qinghe\mall\pay\dto\PayCreateDTO.class
+com\qinghe\mall\pay\entity\Payment.class
+com\qinghe\mall\pay\service\PayServiceImpl.class
+com\qinghe\mall\pay\mapper\PaymentMapper.class
+com\qinghe\mall\pay\controller\PayController.class
+com\qinghe\mall\pay\PayServiceApplication.class
+com\qinghe\mall\pay\service\PayService.class

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.order.mapper.OrderMapper">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.order.entity.Order">
+        <id column="id" property="id"/>
+        <result column="order_sn" property="orderSn"/>
+        <result column="user_id" property="userId"/>
+        <result column="total_amount" property="totalAmount"/>
+        <result column="pay_amount" property="payAmount"/>
+        <result column="freight_amount" property="freightAmount"/>
+        <result column="coupon_amount" property="couponAmount"/>
+        <result column="status" property="status"/>
+        <result column="receiver" property="receiver"/>
+        <result column="receiver_phone" property="receiverPhone"/>
+        <result column="receiver_address" property="receiverAddress"/>
+        <result column="remark" property="remark"/>
+        <result column="pay_time" property="payTime"/>
+        <result column="delivery_time" property="deliveryTime"/>
+        <result column="finish_time" property="finishTime"/>
+        <result column="cancel_time" property="cancelTime"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.qinghe.mall.order.entity.Order" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO oms_order (order_sn, user_id, total_amount, pay_amount, freight_amount, coupon_amount,
+                               status, receiver, receiver_phone, receiver_address, remark,
+                               create_time, update_time)
+        VALUES (#{orderSn}, #{userId}, #{totalAmount}, #{payAmount}, #{freightAmount}, #{couponAmount},
+                #{status}, #{receiver}, #{receiverPhone}, #{receiverAddress}, #{remark},
+                #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="update" parameterType="com.qinghe.mall.order.entity.Order">
+        UPDATE oms_order
+        <set>
+            <if test="orderSn != null">order_sn = #{orderSn},</if>
+            <if test="totalAmount != null">total_amount = #{totalAmount},</if>
+            <if test="payAmount != null">pay_amount = #{payAmount},</if>
+            <if test="freightAmount != null">freight_amount = #{freightAmount},</if>
+            <if test="couponAmount != null">coupon_amount = #{couponAmount},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="receiver != null">receiver = #{receiver},</if>
+            <if test="receiverPhone != null">receiver_phone = #{receiverPhone},</if>
+            <if test="receiverAddress != null">receiver_address = #{receiverAddress},</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="payTime != null">pay_time = #{payTime},</if>
+            <if test="deliveryTime != null">delivery_time = #{deliveryTime},</if>
+            <if test="finishTime != null">finish_time = #{finishTime},</if>
+            <if test="cancelTime != null">cancel_time = #{cancelTime},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT * FROM oms_order WHERE id = #{id}
+    </select>
+
+    <select id="selectByOrderSn" resultMap="BaseResultMap">
+        SELECT * FROM oms_order WHERE order_sn = #{orderSn}
+    </select>
+
+    <select id="selectList" resultMap="BaseResultMap">
+        SELECT * FROM oms_order
+        <where>
+            <if test="userId != null">user_id = #{userId}</if>
+            <if test="status != null">
+                <if test="userId != null">AND</if>
+                status = #{status}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <update id="updateStatus">
+        UPDATE oms_order SET status = #{status}, update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="countByUserIdAndStatus" resultType="int">
+        SELECT COUNT(*) FROM oms_order WHERE user_id = #{userId} AND status = #{status}
+    </select>
+
+</mapper>
