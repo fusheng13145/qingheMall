@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.UserDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.UserDO">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="user_name" property="userName" jdbcType="VARCHAR"/>
+        <result column="pwd" property="pwd" jdbcType="VARCHAR"/>
+        <result column="nick_name" property="nickName" jdbcType="VARCHAR"/>
+        <result column="avatar" property="avatar" jdbcType="VARCHAR"/>
+        <result column="role" property="role" jdbcType="VARCHAR"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+        <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_name, pwd, nick_name, avatar, role, gmt_created, gmt_modified
+    </sql>
+
+    <select id="findByUserName" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user
+        WHERE user_name = #{userName}
+    </select>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.UserDO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user (user_name, pwd, nick_name, avatar, role, gmt_created, gmt_modified)
+        VALUES (#{userName}, #{pwd}, #{nickName}, #{avatar}, #{role}, #{gmtCreated}, #{gmtModified})
+    </insert>
+
+    <select id="findAll" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user
+        ORDER BY gmt_created DESC
+    </select>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user
+        WHERE id = #{id}
+    </select>
+
+    <update id="updateRole">
+        UPDATE user
+        SET role = #{role}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
+</mapper>

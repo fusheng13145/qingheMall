@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.ProductDetailDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.ProductDetailDO">
+        <id column="id" property="id" jdbcType="VARCHAR"/>
+        <result column="product_id" property="productId" jdbcType="VARCHAR"/>
+        <result column="price" property="price" jdbcType="DOUBLE"/>
+        <result column="size" property="size" jdbcType="DOUBLE"/>
+        <result column="stock" property="stock" jdbcType="INTEGER"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+        <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, product_id, price, size, stock, gmt_created, gmt_modified
+    </sql>
+
+    <select id="findByProductId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM product_detail
+        WHERE product_id = #{productId}
+    </select>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM product_detail
+        WHERE id = #{id}
+    </select>
+
+    <update id="updateStock">
+        UPDATE product_detail
+        SET stock = #{stock}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
+</mapper>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.OrderDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.OrderDO">
+        <id column="id" property="id" jdbcType="VARCHAR"/>
+        <result column="order_number" property="orderNumber" jdbcType="VARCHAR"/>
+        <result column="user_id" property="userId" jdbcType="BIGINT"/>
+        <result column="product_detail_id" property="productDetailId" jdbcType="VARCHAR"/>
+        <result column="total_price" property="totalPrice" jdbcType="DOUBLE"/>
+        <result column="status" property="status" jdbcType="VARCHAR"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+        <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, order_number, user_id, product_detail_id, total_price, status, gmt_created, gmt_modified
+    </sql>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.OrderDO">
+        INSERT INTO `order` (id, order_number, user_id, product_detail_id, total_price, status, gmt_created, gmt_modified)
+        VALUES (#{id}, #{orderNumber}, #{userId}, #{productDetailId}, #{totalPrice}, #{status}, #{gmtCreated}, #{gmtModified})
+    </insert>
+
+    <select id="findByOrderNumber" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `order`
+        WHERE order_number = #{orderNumber}
+    </select>
+
+    <select id="findByUserIdAndStatus" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `order`
+        WHERE user_id = #{userId}
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY gmt_created DESC
+    </select>
+
+    <update id="updateStatus">
+        UPDATE `order`
+        SET status = #{status}, gmt_modified = NOW()
+        WHERE order_number = #{orderNumber}
+    </update>
+
+    <select id="findAll" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `order`
+        ORDER BY gmt_created DESC
+    </select>
+
+</mapper>
