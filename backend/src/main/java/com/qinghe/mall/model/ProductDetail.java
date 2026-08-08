@@ -1,12 +1,13 @@
 package com.qinghe.mall.model;
 
+import java.math.BigDecimal;
 import java.util.Date;
 
 public class ProductDetail {
 
     private String id;
     private String productId;
-    private Double price;
+    private BigDecimal price;
     private Double size;
     private Integer stock;
     private Date gmtCreated;
@@ -28,11 +29,11 @@ public class ProductDetail {
         this.productId = productId;
     }
 
-    public Double getPrice() {
+    public BigDecimal getPrice() {
         return price;
     }
 
-    public void setPrice(Double price) {
+    public void setPrice(BigDecimal price) {
         this.price = price;
     }
 

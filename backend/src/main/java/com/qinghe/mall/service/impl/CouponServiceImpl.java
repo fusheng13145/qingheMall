@@ -1,0 +1,228 @@
+package com.qinghe.mall.service.impl;
+
+import com.github.pagehelper.Page;
+import com.github.pagehelper.PageHelper;
+import com.qinghe.mall.dao.CouponDAO;
+import com.qinghe.mall.dao.UserCouponDAO;
+import com.qinghe.mall.dataobject.CouponDO;
+import com.qinghe.mall.dataobject.UserCouponDO;
+import com.qinghe.mall.model.Paging;
+import com.qinghe.mall.service.CouponService;
+import com.qinghe.mall.util.UUIDUtils;
+import java.math.BigDecimal;
+import java.util.Date;
+import java.util.List;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class CouponServiceImpl implements CouponService {
+
+    @Autowired
+    private CouponDAO couponDAO;
+
+    @Autowired
+    private UserCouponDAO userCouponDAO;
+
+    private static final BigDecimal ZERO = BigDecimal.ZERO;
+
+    // ===================== 管理端 =====================
+
+    @Override
+    public CouponDO createCoupon(CouponDO coupon) {
+        if (coupon == null || StringUtils.isBlank(coupon.getName())) {
+            throw new RuntimeException("券名称不能为空");
+        }
+        if (!"FULL_REDUCTION".equals(coupon.getType()) && !"DISCOUNT".equals(coupon.getType())) {
+            throw new RuntimeException("券类型不合法（应为 FULL_REDUCTION 或 DISCOUNT）");
+        }
+        if (coupon.getStartTime() == null || coupon.getEndTime() == null) {
+            throw new RuntimeException("有效期起止时间不能为空");
+        }
+        if (coupon.getEndTime().before(coupon.getStartTime())) {
+            throw new RuntimeException("结束时间须晚于开始时间");
+        }
+        if (coupon.getTotal() == null || coupon.getTotal() < 0) {
+            coupon.setTotal(0);
+        }
+        if (coupon.getIssued() == null) {
+            coupon.setIssued(0);
+        }
+        if (coupon.getPerLimit() == null || coupon.getPerLimit() < 1) {
+            coupon.setPerLimit(1);
+        }
+        if (StringUtils.isBlank(coupon.getStatus())) {
+            coupon.setStatus("ACTIVE");
+        }
+        coupon.setId(UUIDUtils.uuid());
+        coupon.setGmtCreated(new Date());
+        coupon.setGmtModified(new Date());
+        couponDAO.insert(coupon);
+        return coupon;
+    }
+
+    @Override
+    public List<CouponDO> listActive() {
+        return couponDAO.findActive();
+    }
+
+    @Override
+    public Paging<CouponDO> listCoupons(int pageNum, int pageSize) {        if (pageNum < 1) {
+            pageNum = 1;
+        }
+        if (pageSize < 1 || pageSize > 50) {
+            pageSize = 10;
+        }
+        Page<CouponDO> page = PageHelper.startPage(pageNum, pageSize)
+                .doSelectPage(() -> couponDAO.findPage());
+        Paging<CouponDO> paging = new Paging<>();
+        paging.setPageNum(pageNum);
+        paging.setPageSize(pageSize);
+        paging.setTotalPage(page.getPages());
+        paging.setTotalCount(page.getTotal());
+        paging.setData(page.getResult());
+        return paging;
+    }
+
+    @Override
+    public CouponDO updateCoupon(CouponDO coupon) {
+        CouponDO existing = couponDAO.findById(coupon.getId());
+        if (existing == null) {
+            throw new RuntimeException("券不存在");
+        }
+        if ("ACTIVE".equals(existing.getStatus())) {
+            throw new RuntimeException("上架中的券不可修改，请先下架");
+        }
+        couponDAO.update(coupon);
+        return couponDAO.findById(coupon.getId());
+    }
+
+    @Override
+    public void toggle(String couponId, String status) {
+        if (!"ACTIVE".equals(status) && !"INACTIVE".equals(status)) {
+            throw new RuntimeException("状态不合法（应为 ACTIVE 或 INACTIVE）");
+        }
+        couponDAO.updateStatus(couponId, status);
+    }
+
+    // ===================== 用户端 =====================
+
+    @Override
+    @Transactional
+    public void claim(String couponId, Long userId) {
+        CouponDO coupon = couponDAO.findById(couponId);
+        if (coupon == null) {
+            throw new RuntimeException("券不存在");
+        }
+        if (!"ACTIVE".equals(coupon.getStatus())) {
+            throw new RuntimeException("券已下架");
+        }
+        Date now = new Date();
+        if (now.before(coupon.getStartTime()) || now.after(coupon.getEndTime())) {
+            throw new RuntimeException("不在领取时间内");
+        }
+        if (coupon.getTotal() != null && coupon.getIssued() != null && coupon.getIssued() >= coupon.getTotal()) {
+            throw new RuntimeException("券已领完");
+        }
+        // 原子自增 issued（DB 层 WHERE issued < total 保证不超发）
+        int inc = couponDAO.incrementIssued(couponId);
+        if (inc <= 0) {
+            throw new RuntimeException("券已领完");
+        }
+        UserCouponDO uc = new UserCouponDO();
+        uc.setId(UUIDUtils.uuid());
+        uc.setUserId(userId);
+        uc.setCouponId(couponId);
+        uc.setStatus("UNUSED");
+        uc.setGmtCreated(new Date());
+        uc.setGmtModified(new Date());
+        try {
+            userCouponDAO.insert(uc);
+        } catch (Exception e) {
+            // uk_user_coupon 唯一约束：同一用户重复领取，事务回滚 issued 自增
+            throw new RuntimeException("您已领取过该券");
+        }
+    }
+
+    @Override
+    public List<UserCouponDO> myCoupons(Long userId, String status) {
+        return userCouponDAO.findByUserIdAndStatus(userId, status);
+    }
+
+    @Override
+    public List<UserCouponDO> available(Long userId, BigDecimal amount) {
+        final BigDecimal amt = amount == null ? ZERO : amount;
+        List<UserCouponDO> list = userCouponDAO.findUsable(userId, amt);
+        // 按优惠额降序，前端默认推荐最优券
+        list.sort((a, b) -> calculateDiscount(b, amt).compareTo(calculateDiscount(a, amt)));
+        return list;
+    }
+
+    // ===================== 规则引擎与核销 =====================
+
+    @Override
+    public BigDecimal calculateDiscount(UserCouponDO uc, BigDecimal orderTotal) {
+        if (uc == null || orderTotal == null) {
+            return ZERO;
+        }
+        BigDecimal threshold = uc.getThreshold() == null ? ZERO : uc.getThreshold();
+        if (orderTotal.compareTo(threshold) < 0) {
+            return ZERO; // 不满门槛
+        }
+        if ("FULL_REDUCTION".equals(uc.getCouponType())) {
+            BigDecimal amt = uc.getCouponAmount() == null ? ZERO : uc.getCouponAmount();
+            return amt.min(orderTotal);
+        } else if ("DISCOUNT".equals(uc.getCouponType())) {
+            BigDecimal rate = uc.getCouponDiscount() == null ? BigDecimal.ONE : uc.getCouponDiscount();
+            BigDecimal raw = orderTotal.multiply(BigDecimal.ONE.subtract(rate));
+            if (uc.getCouponMaxDiscount() != null) {
+                return raw.min(uc.getCouponMaxDiscount()).min(orderTotal);
+            }
+            return raw.min(orderTotal);
+        }
+        return ZERO;
+    }
+
+    @Override
+    @Transactional
+    public void lockCoupon(String userCouponId, Long userId, String orderNumber) {
+        int updated = userCouponDAO.lock(userCouponId, userId, orderNumber);
+        if (updated <= 0) {
+            throw new RuntimeException("优惠券不可用或已被使用");
+        }
+    }
+
+    @Override
+    public BigDecimal validateAndComputeDiscount(String userCouponId, Long userId, BigDecimal orderTotal) {
+        UserCouponDO uc = userCouponDAO.findById(userCouponId);
+        if (uc == null) {
+            throw new RuntimeException("优惠券不存在");
+        }
+        if (!userId.equals(uc.getUserId())) {
+            throw new RuntimeException("优惠券不属于当前用户");
+        }
+        if (!"UNUSED".equals(uc.getStatus())) {
+            throw new RuntimeException("优惠券已使用");
+        }
+        CouponDO coupon = couponDAO.findById(uc.getCouponId());
+        if (coupon == null) {
+            throw new RuntimeException("券模板不存在");
+        }
+        if (!"ACTIVE".equals(coupon.getStatus())) {
+            throw new RuntimeException("券已下架");
+        }
+        Date now = new Date();
+        if (now.before(coupon.getStartTime()) || now.after(coupon.getEndTime())) {
+            throw new RuntimeException("券不在有效期");
+        }
+        return calculateDiscount(uc, orderTotal);
+    }
+
+    @Override
+    @Transactional
+    public void releaseCoupon(String userCouponId) {
+        userCouponDAO.release(userCouponId);
+    }
+}

@@ -8,7 +8,7 @@
         <result column="order_number" property="orderNumber" jdbcType="VARCHAR"/>
         <result column="channel_payment_id" property="channelPaymentId" jdbcType="VARCHAR"/>
         <result column="channel_type" property="channelType" jdbcType="VARCHAR"/>
-        <result column="amount" property="amount" jdbcType="DOUBLE"/>
+        <result column="amount" property="amount" jdbcType="DECIMAL"/>
         <result column="pay_type" property="payType" jdbcType="VARCHAR"/>
         <result column="pay_status" property="payStatus" jdbcType="VARCHAR"/>
         <result column="extend_str" property="extendStr" jdbcType="VARCHAR"/>

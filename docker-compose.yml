@@ -1,0 +1,108 @@
+# ============================================================
+# 青禾商城 一键启动编排（M3-9 容器化）
+# 用法：docker compose up -d --build
+# 访问：前端 http://localhost:80（Nginx 托管 + 反代 /api）
+#       后端 http://localhost:8080/api
+# 默认账号：admin / 123456
+# ============================================================
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: qinghe-mysql
+    environment:
+      # ⚠️ 生产务必通过 .env 覆盖为强口令；此处仅为本地开发默认（非 root123 弱口令）
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-QhMallDev2026!}
+      MYSQL_DATABASE: qinghedb
+      TZ: Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次启动自动执行初始化脚本（建库建表 + 种子数据 + admin 账号）
+      - ./backend/index.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD:-QhMallDev2026!}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: qinghe-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: qinghe-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:mysql://mysql:3306/qinghedb?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8
+      DB_USERNAME: ${DB_USERNAME:-root}
+      # ⚠️ 生产务必通过 .env 覆盖 DB_PASSWORD 为强口令（勿使用代码库中的开发默认值）
+      DB_PASSWORD: ${DB_PASSWORD:-QhMallDev2026!}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      UPLOAD_DIR: /app/upload
+    ports:
+      - "8080:8080"
+    volumes:
+      - upload-data:/app/upload
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    container_name: qinghe-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  # ============ 监控（P2-2，可选启动）============
+  # 指标端点：http://localhost:8080/actuator/prometheus
+  # Prometheus：http://localhost:9090 | Grafana：http://localhost:3000（admin/admin）
+  prometheus:
+    image: prom/prometheus:v2.49.1
+    container_name: qinghe-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - backend
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: qinghe-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - grafana-data:/var/lib/grafana
+      # 自动注册 Prometheus 数据源 + 青禾商城看板（含告警可视化）
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  mysql-data:
+  upload-data:
+  prometheus-data:
+  grafana-data:

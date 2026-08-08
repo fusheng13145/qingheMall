@@ -34,11 +34,11 @@
           />
         </div>
       </div>
-      <div class="error-message" v-if="errorMsg">
+      <div v-if="errorMsg" class="error-message">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
         {{ errorMsg }}
       </div>
-      <button class="btn-submit" @click="handleLogin" :disabled="submitting">
+      <button class="btn-submit" :disabled="submitting" @click="handleLogin">
         <span v-if="!submitting">登录</span>
         <span v-else class="btn-loading">登录中...</span>
       </button>

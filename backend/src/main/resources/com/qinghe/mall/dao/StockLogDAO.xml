@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.StockLogDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.StockLogDO">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="product_detail_id" property="productDetailId" jdbcType="VARCHAR"/>
+        <result column="product_id" property="productId" jdbcType="VARCHAR"/>
+        <result column="order_number" property="orderNumber" jdbcType="VARCHAR"/>
+        <result column="change_type" property="changeType" jdbcType="VARCHAR"/>
+        <result column="change_quantity" property="changeQuantity" jdbcType="INTEGER"/>
+        <result column="before_stock" property="beforeStock" jdbcType="INTEGER"/>
+        <result column="after_stock" property="afterStock" jdbcType="INTEGER"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.StockLogDO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO stock_log (product_detail_id, product_id, order_number, change_type, change_quantity,
+                               before_stock, after_stock, gmt_created)
+        VALUES (#{productDetailId}, #{productId}, #{orderNumber}, #{changeType}, #{changeQuantity},
+                #{beforeStock}, #{afterStock}, #{gmtCreated})
+    </insert>
+
+    <select id="findByOrderNumber" resultMap="BaseResultMap">
+        SELECT id, product_detail_id, product_id, order_number, change_type, change_quantity,
+               before_stock, after_stock, gmt_created
+        FROM stock_log
+        WHERE order_number = #{orderNumber}
+        ORDER BY id ASC
+    </select>
+
+    <select id="findByProductDetailId" resultMap="BaseResultMap">
+        SELECT id, product_detail_id, product_id, order_number, change_type, change_quantity,
+               before_stock, after_stock, gmt_created
+        FROM stock_log
+        WHERE product_detail_id = #{productDetailId}
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <delete id="deleteByProductDetailIdForTest">
+        DELETE FROM stock_log WHERE product_detail_id = #{productDetailId}
+    </delete>
+
+</mapper>

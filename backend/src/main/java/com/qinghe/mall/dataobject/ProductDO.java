@@ -1,13 +1,19 @@
 package com.qinghe.mall.dataobject;
 
 import com.qinghe.mall.model.Product;
+import java.math.BigDecimal;
 import java.util.Date;
 
 public class ProductDO {
 
     private String id;
     private String name;
-    private Double price;
+    private String brand;
+    /** 归属商家ID（NULL=平台自营，M6 平台化） */
+    private Long merchantId;
+    /** 上架状态：ON 在售 / OFF 下架（M6） */
+    private String status;
+    private BigDecimal price;
     private Integer purchaseNum;
     private String productIntro;
     private String productImgs;
@@ -30,11 +36,35 @@ public class ProductDO {
         this.name = name;
     }
 
-    public Double getPrice() {
+    public String getBrand() {
+        return brand;
+    }
+
+    public void setBrand(String brand) {
+        this.brand = brand;
+    }
+
+    public Long getMerchantId() {
+        return merchantId;
+    }
+
+    public void setMerchantId(Long merchantId) {
+        this.merchantId = merchantId;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public BigDecimal getPrice() {
         return price;
     }
 
-    public void setPrice(Double price) {
+    public void setPrice(BigDecimal price) {
         this.price = price;
     }
 
@@ -82,6 +112,9 @@ public class ProductDO {
         Product product = new Product();
         product.setId(this.id);
         product.setName(this.name);
+        product.setBrand(this.brand);
+        product.setMerchantId(this.merchantId);
+        product.setStatus(this.status);
         product.setPrice(this.price);
         product.setPurchaseNum(this.purchaseNum);
         product.setProductIntro(this.productIntro);

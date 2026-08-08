@@ -49,6 +49,48 @@
       </div>
     </div>
 
+    <div class="report-section">
+      <div class="report-header">
+        <h2 class="section-title report-title">销售报表（已支付订单）</h2>
+        <div class="report-range">
+          <button
+            v-for="d in [7, 30]"
+            :key="d"
+            class="range-btn"
+            :class="{ active: reportDays === d }"
+            @click="switchDays(d)"
+          >近{{ d }}天</button>
+        </div>
+      </div>
+      <div class="report-body" v-if="report.length > 0">
+        <div class="bar-chart">
+          <div v-for="item in report" :key="item.day" class="bar-col" :title="`${item.day} 销售额 ¥${Number(item.salesAmount || 0).toFixed(2)}`">
+            <div class="bar-track">
+              <div class="bar-fill" :style="{ height: barHeight(item.salesAmount) }"></div>
+            </div>
+            <span class="bar-day">{{ item.day.slice(5) }}</span>
+          </div>
+        </div>
+        <table class="data-table report-table">
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>订单数</th>
+              <th>销售额</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in report" :key="item.day">
+              <td>{{ item.day }}</td>
+              <td>{{ item.orderCount }}</td>
+              <td class="price">&yen;{{ Number(item.salesAmount || 0).toFixed(2) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="report-empty" v-else>近 {{ reportDays }} 天暂无已支付订单数据</div>
+    </div>
+
     <div class="recent-section">
       <h2 class="section-title">最近订单</h2>
       <div class="table-wrapper">
@@ -66,15 +108,15 @@
           <tbody>
             <tr v-for="order in dashboard.recentOrders" :key="order.id">
               <td class="mono">{{ order.orderNumber }}</td>
-              <td>{{ order.userName }}</td>
-              <td>{{ order.productName }}</td>
-              <td class="price">&yen;{{ order.totalPrice?.toFixed(2) }}</td>
+              <td>{{ (order.user && order.user.userName) || '-' }}</td>
+              <td>{{ order.productName || '-' }}</td>
+              <td class="price">&yen;{{ Number(order.totalPrice || 0).toFixed(2) }}</td>
               <td>
                 <span class="status-badge" :class="getStatusClass(order.status)">
                   {{ getStatusText(order.status) }}
                 </span>
               </td>
-              <td class="time">{{ order.createTime }}</td>
+              <td class="time">{{ formatTime(order.gmtCreated) }}</td>
             </tr>
           </tbody>
         </table>
@@ -85,7 +127,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getDashboard } from '../../api/admin'
+import { getDashboard, getOrderList, getSalesReport } from '../../api/admin'
 
 const dashboard = ref({
   productCount: 0,
@@ -95,23 +137,55 @@ const dashboard = ref({
   recentOrders: []
 })
 
+const report = ref([])
+const reportDays = ref(7)
+const maxSales = ref(0)
+
 onMounted(async () => {
   try {
-    const res = await getDashboard()
-    if (res.data.code === 200) {
-      dashboard.value = res.data.data
+    const [statsRes, ordersRes] = await Promise.all([getDashboard(), getOrderList()])
+    dashboard.value = {
+      ...statsRes.data,
+      recentOrders: (ordersRes.data || []).slice(0, 5)
     }
   } catch (e) {
-    // ignore
+    console.error('加载仪表盘数据失败:', e)
   }
+  loadReport(7)
 })
+
+async function loadReport(days) {
+  try {
+    const res = await getSalesReport(days)
+    report.value = res.data || []
+    maxSales.value = Math.max(0, ...report.value.map(i => Number(i.salesAmount || 0)))
+  } catch (e) {
+    console.error('加载销售报表失败:', e)
+  }
+}
+
+function switchDays(days) {
+  reportDays.value = days
+  loadReport(days)
+}
+
+function barHeight(salesAmount) {
+  const value = Number(salesAmount || 0)
+  if (maxSales.value <= 0) return '0%'
+  const percent = Math.max(4, Math.round((value / maxSales.value) * 100))
+  return percent + '%'
+}
 
 function getStatusText(status) {
   const map = {
     'WAIT_BUYER_PAY': '待付款',
-    'TRADE_PAID_SUCCESS': '已付款',
+    'TRADE_PAID_SUCCESS': '待发货',
     'TRADE_CLOSED': '已关闭',
-    'TRADE_FINISHED': '已完成'
+    'TRADE_PAID_FAILED': '支付失败',
+    'TRADE_SHIPPED': '待收货',
+    'TRADE_COMPLETED': '已完成',
+    'TRADE_REFUNDING': '退款中',
+    'TRADE_REFUNDED': '已退款'
   }
   return map[status] || status
 }
@@ -120,10 +194,26 @@ function getStatusClass(status) {
   const map = {
     'WAIT_BUYER_PAY': 'warning',
     'TRADE_PAID_SUCCESS': 'success',
+    'TRADE_SHIPPED': 'info',
+    'TRADE_COMPLETED': 'success',
+    'TRADE_REFUNDING': 'warning',
+    'TRADE_REFUNDED': 'danger',
     'TRADE_CLOSED': 'danger',
-    'TRADE_FINISHED': 'info'
+    'TRADE_PAID_FAILED': 'danger'
   }
   return map[status] || ''
+}
+
+function formatTime(time) {
+  if (!time) return ''
+  const d = new Date(time)
+  if (isNaN(d.getTime())) return String(time)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}`
 }
 </script>
 
@@ -168,20 +258,21 @@ function getStatusClass(status) {
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* 统计卡统一收敛到「青禾」翠绿家族，消除蓝/紫/橙与品牌主色的割裂 */
 .stat-products {
   background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
 }
 
 .stat-orders {
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  background: linear-gradient(135deg, #14b8a6, #0d9488);
 }
 
 .stat-users {
-  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  background: linear-gradient(135deg, #84cc16, #65a30d);
 }
 
 .stat-revenue {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
+  background: linear-gradient(135deg, #166534, #14532d);
 }
 
 .stat-icon {
@@ -217,6 +308,108 @@ function getStatusClass(status) {
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
   overflow: hidden;
+}
+
+/* ========== 销售报表 ========== */
+.report-section {
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 24px;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.report-title {
+  border-bottom: none;
+}
+
+.report-range {
+  display: flex;
+  gap: 8px;
+}
+
+.range-btn {
+  padding: 6px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.range-btn.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-50);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.report-body {
+  padding: 24px;
+}
+
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 160px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--color-divider);
+  margin-bottom: 16px;
+}
+
+.bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bar-track {
+  width: 100%;
+  max-width: 48px;
+  height: 120px;
+  display: flex;
+  align-items: flex-end;
+  background: var(--color-bg-sunken);
+  border-radius: 6px 6px 0 0;
+  overflow: hidden;
+}
+
+.bar-fill {
+  width: 100%;
+  background: linear-gradient(180deg, var(--color-primary), var(--color-primary-dark));
+  border-radius: 6px 6px 0 0;
+  min-height: 2px;
+  transition: height 0.4s ease;
+}
+
+.bar-day {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.report-table {
+  margin-top: 8px;
+}
+
+.report-empty {
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: 14px;
 }
 
 .section-title {

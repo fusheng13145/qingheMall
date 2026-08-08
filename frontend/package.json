@@ -5,16 +5,27 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .js,.vue",
+    "format": "prettier --write \"src/**/*.{js,vue,json}\""
   },
   "dependencies": {
-    "vue": "^3.3.4",
-    "vue-router": "^4.2.4",
+    "axios": "^1.5.0",
     "pinia": "^2.1.6",
-    "axios": "^1.5.0"
+    "vue": "^3.3.4",
+    "vue-router": "^4.2.4"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.3.4",
-    "vite": "^4.4.9"
+    "@vue/test-utils": "^2.4.1",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^9.33.0",
+    "jsdom": "^22.1.0",
+    "prettier": "^3.9.6",
+    "vite": "^4.4.9",
+    "vitest": "^0.34.6"
   }
 }

@@ -44,6 +44,18 @@
           </svg>
           <span>用户管理</span>
         </router-link>
+        <router-link to="/admin/merchants" class="nav-item" :class="{ active: $route.name === 'AdminMerchants' }" @click="onNavClick">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l1.5-5h15L21 9"/><path d="M3 9v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V9"/><path d="M3 9h18a2 2 0 0 1 0 4H3a2 2 0 0 1 0-4z"/>
+          </svg>
+          <span>商家审核</span>
+        </router-link>
+        <router-link to="/admin/seckills" class="nav-item" :class="{ active: $route.name === 'AdminSeckills' }" @click="onNavClick">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+          <span>秒杀管理</span>
+        </router-link>
       </nav>
     </aside>
 

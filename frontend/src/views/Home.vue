@@ -63,14 +63,14 @@
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         </router-link>
       </div>
-      <div class="product-grid" v-if="products.length > 0">
+      <div v-if="products.length > 0" class="product-grid">
         <ProductCard v-for="product in products" :key="product.id" :product="product" />
       </div>
-      <div class="loading-state" v-else-if="loading">
+      <div v-else-if="loading" class="loading-state">
         <div class="loading-spinner"></div>
         <span>加载中...</span>
       </div>
-      <div class="empty-state" v-else>
+      <div v-else class="empty-state">
         <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="8" y1="15" x2="16" y2="15"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
         <p>暂无商品</p>
       </div>
@@ -93,9 +93,7 @@ const loading = ref(true)
 onMounted(async () => {
   try {
     const res = await pageQuery(1, 8)
-    if (res.data.code === 200) {
-      products.value = res.data.data.records || res.data.data || []
-    }
+    products.value = res.data.data || []
   } catch (error) {
     console.error('加载商品失败:', error)
   } finally {

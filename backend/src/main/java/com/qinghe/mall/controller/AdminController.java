@@ -2,6 +2,7 @@ package com.qinghe.mall.controller;
 
 import com.qinghe.mall.model.*;
 import com.qinghe.mall.service.*;
+import com.qinghe.mall.dataobject.CouponDO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,6 +16,9 @@ public class AdminController {
     @Autowired private ProductService productService;
     @Autowired private OrderService orderService;
     @Autowired private UserService userService;
+    @Autowired private CouponService couponService;
+    @Autowired private com.qinghe.mall.service.SeckillService seckillService;
+    @Autowired private com.qinghe.mall.service.MerchantService merchantService;
 
     // 检查管理员权限的私有方法
     private boolean checkAdmin(HttpServletRequest request) {
@@ -28,17 +32,26 @@ public class AdminController {
         if (!checkAdmin(request)) {
             return Result.fail(403, "无管理员权限");
         }
+        // 全部走 SQL 聚合，避免全表捞取与内存计算（M3-8）
         Map<String, Object> stats = new HashMap<>();
-        stats.put("productCount", productService.queryPage(1, 1).getTotalCount());
-        stats.put("orderCount", orderService.findAll().size());
-        stats.put("userCount", userService.findAll().size());
-        // 计算总收入
-        double totalRevenue = orderService.findAll().stream()
-                .filter(o -> o.getStatus() == OrderStatus.TRADE_PAID_SUCCESS)
-                .mapToDouble(o -> o.getTotalPrice() != null ? o.getTotalPrice() : 0)
-                .sum();
-        stats.put("totalRevenue", totalRevenue);
+        stats.put("productCount", productService.queryPage(1, 1, null, null, null).getTotalCount());
+        stats.put("orderCount", orderService.countAll());
+        stats.put("userCount", userService.countAll());
+        stats.put("totalRevenue", orderService.sumTotalPriceByStatus(OrderStatus.TRADE_PAID_SUCCESS.name()));
         return Result.success(stats);
+    }
+
+    /**
+     * 销售日报（P3 报表）：GET /api/admin/report?days=7
+     * 返回近 N 天每天已支付订单的销售额与订单数（SQL 按天聚合）。
+     */
+    @GetMapping("/report")
+    public Result<List<Map<String, Object>>> salesReport(@RequestParam(value = "days", defaultValue = "7") Integer days,
+                                                         HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(orderService.dailySalesReport(days));
     }
 
     // ========== 商品管理 ==========
@@ -47,12 +60,9 @@ public class AdminController {
         if (!checkAdmin(request)) {
             return Result.fail(403, "无管理员权限");
         }
-        try {
-            Product result = productService.add(product);
-            return Result.success(result);
-        } catch (RuntimeException e) {
-            return Result.fail(e.getMessage());
-        }
+        // 业务异常由 GlobalExceptionHandler 统一转为 Result.fail
+        Product result = productService.add(product);
+        return Result.success(result);
     }
 
     @PostMapping("/product/update")
@@ -60,12 +70,8 @@ public class AdminController {
         if (!checkAdmin(request)) {
             return Result.fail(403, "无管理员权限");
         }
-        try {
-            Product result = productService.update(product);
-            return Result.success(result);
-        } catch (RuntimeException e) {
-            return Result.fail(e.getMessage());
-        }
+        Product result = productService.update(product);
+        return Result.success(result);
     }
 
     @PostMapping("/product/delete")
@@ -75,6 +81,19 @@ public class AdminController {
         }
         productService.delete(id);
         return Result.success();
+    }
+
+    /** 商品管理列表（全量含下架，分页；顾客端在售列表走 /api/product/page） */
+    @GetMapping("/product/list")
+    public Result<com.qinghe.mall.model.Paging<com.qinghe.mall.model.Product>> listProducts(
+            @RequestParam(value = "pagination", defaultValue = "1") Integer pagination,
+            @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize,
+            @RequestParam(value = "keyword", required = false) String keyword,
+            HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(productService.queryPage(pagination, pageSize, keyword, null, null));
     }
 
     // ========== 订单管理 ==========
@@ -95,6 +114,133 @@ public class AdminController {
             return Result.fail(403, "无管理员权限");
         }
         orderService.updateOrderStatus(orderNumber, status);
+        return Result.success();
+    }
+
+    /**
+     * 发货：仅已付款订单可发货，状态机守卫（管理员操作）。
+     */
+    @PostMapping("/order/ship")
+    public Result<Void> shipOrder(@RequestParam("orderNumber") String orderNumber, HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        orderService.shipOrder(orderNumber);
+        return Result.success();
+    }
+
+    /**
+     * 处理退款：退款中订单 → 已退款(approve) 或回退已付款(reject)，状态机守卫（管理员操作）。
+     */
+    @PostMapping("/order/refund/process")
+    public Result<Void> processRefund(@RequestParam("orderNumber") String orderNumber,
+                                      @RequestParam(value = "approve", defaultValue = "true") boolean approve,
+                                      HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        orderService.processRefund(orderNumber, approve);
+        return Result.success();
+    }
+
+    // ========== 优惠券管理 ==========
+    @PostMapping("/coupon/create")
+    public Result<CouponDO> createCoupon(@RequestBody CouponDO coupon, HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(couponService.createCoupon(coupon));
+    }
+
+    @GetMapping("/coupon/list")
+    public Result<com.qinghe.mall.model.Paging<CouponDO>> listCoupons(
+            @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
+            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize,
+            HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(couponService.listCoupons(pageNum, pageSize));
+    }
+
+    @PostMapping("/coupon/update")
+    public Result<CouponDO> updateCoupon(@RequestBody CouponDO coupon, HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(couponService.updateCoupon(coupon));
+    }
+
+    @PostMapping("/coupon/toggle")
+    public Result<Void> toggleCoupon(@RequestParam("couponId") String couponId,
+                                     @RequestParam("status") String status,
+                                     HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        couponService.toggle(couponId, status);
+        return Result.success();
+    }
+
+    // ========== 秒杀活动管理 ==========
+    @PostMapping("/seckill/create")
+    public Result<com.qinghe.mall.dataobject.SeckillActivityDO> createSeckill(
+            @RequestBody com.qinghe.mall.dataobject.SeckillActivityDO activity, HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(seckillService.createActivity(activity));
+    }
+
+    @GetMapping("/seckill/list")
+    public Result<com.qinghe.mall.model.Paging<com.qinghe.mall.dataobject.SeckillActivityDO>> listSeckills(
+            @RequestParam(value = "status", required = false, defaultValue = "") String status,
+            @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
+            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize,
+            HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(seckillService.listActivities(status, pageNum, pageSize));
+    }
+
+    @PostMapping("/seckill/toggle")
+    public Result<Void> toggleSeckill(@RequestParam("activityId") String activityId,
+                                      @RequestParam("status") String status,
+                                      HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        seckillService.toggle(activityId, status);
+        return Result.success();
+    }
+
+    // ========== 商家入驻审核（M6 平台化） ==========
+    @GetMapping("/merchant/list")
+    public Result<com.qinghe.mall.model.Paging<com.qinghe.mall.dataobject.MerchantDO>> listMerchants(
+            @RequestParam(value = "status", required = false, defaultValue = "") String status,
+            @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
+            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize,
+            HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(merchantService.list(status, pageNum, pageSize));
+    }
+
+    /**
+     * 审核商家入驻：POST /api/admin/merchant/audit?merchantId=&amp;approve=&amp;reason=
+     * approve=true 通过（ACTIVE），false 驳回（REJECTED + 原因）。
+     */
+    @PostMapping("/merchant/audit")
+    public Result<Void> auditMerchant(@RequestParam("merchantId") Long merchantId,
+                                      @RequestParam(value = "approve", defaultValue = "true") boolean approve,
+                                      @RequestParam(value = "reason", required = false) String reason,
+                                      HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        merchantService.audit(merchantId, approve, reason);
         return Result.success();
     }
 

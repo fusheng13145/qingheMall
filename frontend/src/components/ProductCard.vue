@@ -2,7 +2,7 @@
   <div class="product-card" @click="goToDetail">
     <div class="card-image">
       <img :src="imageUrl" :alt="product.name" loading="lazy" />
-      <div class="card-badge" v-if="product.purchaseNum > 50">热销</div>
+      <div v-if="product.purchaseNum > 50" class="card-badge">热销</div>
     </div>
     <div class="card-info">
       <h3 class="card-name">{{ product.name }}</h3>
@@ -30,12 +30,18 @@ const props = defineProps({
 const router = useRouter()
 
 const imageUrl = computed(() => {
-  if (props.product.productImgs) {
-    const imgs = props.product.productImgs.split(';')
-    return imgs[0] || ''
-  }
-  return ''
+  const imgs = splitImgs(props.product.productImgs)
+  return imgs[0] || ''
 })
+
+// 兼容后端以空格分隔、历史数据以分号分隔的图片串
+function splitImgs(str) {
+  if (!str) return []
+  return str
+    .split(/[;\s]+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+}
 
 function goToDetail() {
   router.push(`/product/${props.product.id}`)

@@ -1,99 +1,107 @@
 import request from '../utils/request'
-import { mockProducts } from './mock'
 
-const USE_MOCK = true
-
-// Mock 数据
-const mockDashboard = {
-  productCount: 12,
-  orderCount: 156,
-  userCount: 89,
-  totalRevenue: 52680.50,
-  recentOrders: [
-    { id: 'o1', orderNumber: 'QH20240601001', userName: '张三', productName: '陶瓷花瓶', totalPrice: 168.00, status: 'TRADE_PAID_SUCCESS', createTime: '2024-06-01 14:30:00' },
-    { id: 'o2', orderNumber: 'QH20240531002', userName: '李四', productName: '羊毛针织毯', totalPrice: 329.00, status: 'WAIT_BUYER_PAY', createTime: '2024-05-31 10:15:00' },
-    { id: 'o3', orderNumber: 'QH20240530003', userName: '王五', productName: '手冲咖啡壶', totalPrice: 258.00, status: 'TRADE_PAID_SUCCESS', createTime: '2024-05-30 09:20:00' },
-    { id: 'o4', orderNumber: 'QH20240529004', userName: '赵六', productName: '真皮笔记本', totalPrice: 128.00, status: 'TRADE_CLOSED', createTime: '2024-05-29 16:45:00' },
-    { id: 'o5', orderNumber: 'QH20240528005', userName: '孙七', productName: '智能香薰机', totalPrice: 199.00, status: 'TRADE_PAID_SUCCESS', createTime: '2024-05-28 20:10:00' }
-  ]
-}
-
-const mockUsers = [
-  { id: 1, userName: 'admin', nickName: '管理员', role: 'ADMIN', gmtCreated: '2024-01-01 00:00:00' },
-  { id: 2, userName: 'zhangsan', nickName: '张三', role: 'USER', gmtCreated: '2024-03-15 10:30:00' },
-  { id: 3, userName: 'lisi', nickName: '李四', role: 'USER', gmtCreated: '2024-04-02 14:20:00' },
-  { id: 4, userName: 'wangwu', nickName: '王五', role: 'USER', gmtCreated: '2024-04-18 09:15:00' },
-  { id: 5, userName: 'zhaoliu', nickName: '赵六', role: 'USER', gmtCreated: '2024-05-01 16:45:00' },
-  { id: 6, userName: 'sunqi', nickName: '孙七', role: 'USER', gmtCreated: '2024-05-20 11:00:00' }
-]
-
+// 数据看板统计：GET /api/admin/dashboard
+// 返回 { productCount, orderCount, userCount, totalRevenue }
 export function getDashboard() {
-  if (USE_MOCK) {
-    return Promise.resolve({ data: { code: 200, data: mockDashboard } })
-  }
   return request.get('/admin/dashboard')
 }
 
-export function getProductList() {
-  if (USE_MOCK) {
-    return Promise.resolve({
-      data: {
-        code: 200,
-        data: {
-          records: mockProducts,
-          total: mockProducts.length
-        }
-      }
-    })
-  }
-  return request.get('/product/page', { params: { pagination: 1, pageSize: 50 } })
+// 销售日报（P3 报表）：GET /api/admin/report?days=7
+// 返回 [{ day, orderCount, salesAmount }]
+export function getSalesReport(days = 7) {
+  return request.get('/admin/report', { params: { days } })
+}
+
+// 商品列表（管理端全量分页接口，含下架商品）
+export function getProductList(pageNum = 1, pageSize = 20, keyword = '') {
+  return request.get('/admin/product/list', { params: { pagination: pageNum, pageSize, keyword } })
 }
 
 export function addProduct(data) {
-  if (USE_MOCK) {
-    return Promise.resolve({ data: { code: 200, data: { ...data, id: 'new_' + Date.now() } } })
-  }
   return request.post('/admin/product/add', data)
 }
 
 export function updateProduct(data) {
-  if (USE_MOCK) {
-    return Promise.resolve({ data: { code: 200, data } })
-  }
   return request.post('/admin/product/update', data)
 }
 
 export function deleteProduct(id) {
-  if (USE_MOCK) {
-    return Promise.resolve({ data: { code: 200 } })
-  }
   return request.post('/admin/product/delete', null, { params: { id } })
 }
 
+// 订单列表（全量）：GET /api/admin/order/list
 export function getOrderList() {
-  if (USE_MOCK) {
-    return Promise.resolve({ data: { code: 200, data: mockDashboard.recentOrders } })
-  }
   return request.get('/admin/order/list')
 }
 
 export function updateOrderStatus(orderNumber, status) {
-  if (USE_MOCK) {
-    return Promise.resolve({ data: { code: 200 } })
-  }
   return request.post('/admin/order/updateStatus', null, { params: { orderNumber, status } })
 }
 
+// 发货：POST /api/admin/order/ship?orderNumber=（管理员，仅已付款可发货）
+export function shipOrder(orderNumber) {
+  return request.post('/admin/order/ship', null, { params: { orderNumber } })
+}
+
+// 处理退款：POST /api/admin/order/refund/process?orderNumber=&approve=（管理员，退款中→已退款/回退已付款）
+export function processRefund(orderNumber, approve = true) {
+  return request.post('/admin/order/refund/process', null, { params: { orderNumber, approve } })
+}
+
+// 用户列表（全量）：GET /api/admin/user/list
 export function getUserList() {
-  if (USE_MOCK) {
-    return Promise.resolve({ data: { code: 200, data: mockUsers } })
-  }
   return request.get('/admin/user/list')
 }
 
 export function updateUserRole(id, role) {
-  if (USE_MOCK) {
-    return Promise.resolve({ data: { code: 200 } })
-  }
   return request.post('/admin/user/updateRole', null, { params: { id, role } })
+}
+
+// ===================== 优惠券管理（A2） =====================
+// 创建券模板：POST /api/admin/coupon/create
+export function createCoupon(data) {
+  return request.post('/admin/coupon/create', data)
+}
+
+// 券模板分页列表：GET /api/admin/coupon/list?pageNum=&pageSize=
+export function listCoupons(pageNum = 1, pageSize = 10) {
+  return request.get('/admin/coupon/list', { params: { pageNum, pageSize } })
+}
+
+// 修改券（仅下架态可改）：POST /api/admin/coupon/update
+export function updateCoupon(data) {
+  return request.post('/admin/coupon/update', data)
+}
+
+// 上/下架：POST /api/admin/coupon/toggle?couponId=&status=
+export function toggleCoupon(couponId, status) {
+  return request.post('/admin/coupon/toggle', null, { params: { couponId, status } })
+}
+
+// ===================== 秒杀管理（A3） =====================
+// 创建秒杀活动：POST /api/admin/seckill/create（@RequestBody SeckillActivityDO）
+export function createSeckill(data) {
+  return request.post('/admin/seckill/create', data)
+}
+
+// 秒杀活动分页列表：GET /api/admin/seckill/list?status=&pageNum=&pageSize=
+// 返回 Paging<SeckillActivityDO>，前端取 res.data.data
+export function listSeckills(pageNum = 1, pageSize = 10, status = '') {
+  return request.get('/admin/seckill/list', { params: { pageNum, pageSize, status } })
+}
+
+// 上/下架/结束活动：POST /api/admin/seckill/toggle?activityId=&status=（ONGOING/CLOSED/ENDED）
+export function toggleSeckill(activityId, status) {
+  return request.post('/admin/seckill/toggle', null, { params: { activityId, status } })
+}
+
+// ===================== 商家入驻审核（M6） =====================
+// 商家列表：GET /api/admin/merchant/list?status=&pageNum=&pageSize=
+export function listMerchants(pageNum = 1, pageSize = 10, status = '') {
+  return request.get('/admin/merchant/list', { params: { pageNum, pageSize, status } })
+}
+
+// 审核商家：POST /api/admin/merchant/audit?merchantId=&approve=&reason=（approve=false 必须填 reason）
+export function auditMerchant(merchantId, approve = true, reason = '') {
+  return request.post('/admin/merchant/audit', null, { params: { merchantId, approve, reason } })
 }

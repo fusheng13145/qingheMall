@@ -13,55 +13,169 @@
         @click="switchTab(tab.value)"
       >
         {{ tab.label }}
-        <span class="tab-count" v-if="tab.value !== 'all' && getOrderCount(tab.value) > 0">
-          {{ getOrderCount(tab.value) }}
-        </span>
       </button>
     </div>
-    <div class="order-list" v-if="filteredOrders.length > 0">
-      <div class="order-card" v-for="order in filteredOrders" :key="order.id">
+    <div v-if="orders.length > 0" class="order-list">
+      <div v-for="order in orders" :key="order.id" class="order-card" @click="openDetail(order)">
         <div class="order-header">
           <div class="order-no-wrapper">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            <span class="order-no">{{ order.orderNo || order.id }}</span>
+            <span class="order-no">{{ order.orderNumber }}</span>
           </div>
           <span class="order-status" :class="statusClass(order.status)">{{ statusText(order.status) }}</span>
         </div>
         <div class="order-body">
           <div class="order-product-info">
-            <span class="product-name">{{ order.productName || order.name || '商品' }}</span>
-            <span class="product-detail" v-if="order.size">规格: {{ order.size }}</span>
+            <div class="order-product-line">
+              <img v-if="order.productImg" class="order-product-img" :src="order.productImg" :alt="order.productName" loading="lazy" />
+              <div class="order-product-text">
+                <span class="product-name">{{ order.productName || '商品' }}</span>
+                <span v-if="order.productDetail && order.productDetail.size != null" class="product-detail">规格: {{ formatSize(order.productDetail.size) }} × {{ order.quantity || 1 }}</span>
+              </div>
+            </div>
           </div>
-          <div class="order-price">¥{{ order.totalPrice || order.price || 0 }}</div>
+          <div class="order-price-col">
+            <div class="order-price">¥{{ formatPrice(order.totalPrice) }}</div>
+            <div v-if="order.discountAmount > 0" class="order-discount">已优惠 ¥{{ formatPrice(order.discountAmount) }}</div>
+          </div>
         </div>
         <div class="order-footer">
-          <span class="order-time">{{ formatTime(order.createTime) }}</span>
-          <div class="order-actions">
+          <span class="order-time">{{ formatTime(order.gmtCreated) }}</span>
+          <div class="order-actions" @click.stop>
             <button
-              v-if="order.status === 0"
+              v-if="order.status === 'WAIT_BUYER_PAY'"
               class="btn-pay"
               @click="handlePay(order)"
             >
               立即付款
             </button>
             <button
-              v-if="order.status === 0"
+              v-if="order.status === 'WAIT_BUYER_PAY'"
               class="btn-cancel"
               @click="handleCancel(order)"
             >
               取消订单
             </button>
+            <button
+              v-if="order.status === 'TRADE_PAID_SUCCESS'"
+              class="btn-refund"
+              @click="handleApplyRefund(order)"
+            >
+              申请退款
+            </button>
+            <button
+              v-if="order.status === 'TRADE_SHIPPED'"
+              class="btn-confirm"
+              @click="handleConfirmReceipt(order)"
+            >
+              确认收货
+            </button>
+            <button
+              v-if="(order.status === 'TRADE_PAID_SUCCESS' || order.status === 'TRADE_SHIPPED' || order.status === 'TRADE_COMPLETED') && !order.commented"
+              class="btn-comment"
+              @click="openComment(order)"
+            >
+              评价
+            </button>
           </div>
         </div>
       </div>
     </div>
-    <div class="loading-state" v-else-if="loading">
+    <!-- 分页控件 -->
+    <div v-if="totalPages > 1" class="pagination">
+      <button class="page-btn" :disabled="currentPage <= 1" @click="changePage(currentPage - 1)">上一页</button>
+      <span class="page-info">第 {{ currentPage }} / {{ totalPages }} 页 · 共 {{ totalCount }} 笔</span>
+      <button class="page-btn" :disabled="currentPage >= totalPages" @click="changePage(currentPage + 1)">下一页</button>
+    </div>
+    <div v-else-if="loading" class="loading-state">
       <div class="loading-spinner"></div>
       <span>加载中...</span>
     </div>
-    <div class="empty-state" v-else>
+    <div v-else class="empty-state">
       <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
       <p>暂无订单</p>
+    </div>
+
+    <!-- 订单详情弹窗 -->
+    <div v-if="detailOrder" class="modal-overlay" @click.self="detailOrder = null">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>订单详情</h3>
+          <button class="modal-close" @click="detailOrder = null">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div v-if="detailOrder" class="modal-body">
+          <div class="detail-row">
+            <span class="detail-label">订单号</span>
+            <span class="detail-value mono">{{ detailOrder.orderNumber }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">状态</span>
+            <span class="detail-value">{{ statusText(detailOrder.status) }}</span>
+          </div>
+          <div class="detail-product">
+            <img v-if="detailOrder.productImg" class="detail-img" :src="detailOrder.productImg" :alt="detailOrder.productName" loading="lazy" />
+            <div class="detail-product-info">
+              <span class="detail-product-name">{{ detailOrder.productName || '商品' }}</span>
+              <span v-if="detailOrder.productDetail" class="detail-product-spec">规格: {{ formatSize(detailOrder.productDetail.size) }} × {{ detailOrder.quantity || 1 }}</span>
+              <span class="detail-product-price">单价 ¥{{ formatPrice(detailOrder.productDetail && detailOrder.productDetail.price) }}</span>
+            </div>
+            <span class="detail-product-total">¥{{ formatPrice(detailOrder.totalPrice) }}</span>
+          </div>
+          <div v-if="detailOrder.discountAmount > 0" class="detail-row">
+            <span class="detail-label">优惠抵扣</span>
+            <span class="detail-value discount-value">-¥{{ formatPrice(detailOrder.discountAmount) }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">收货人</span>
+            <span class="detail-value">{{ detailOrder.receiverName || '-' }} <template v-if="detailOrder.receiverPhone">（{{ detailOrder.receiverPhone }}）</template></span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">收货地址</span>
+            <span class="detail-value">{{ detailOrder.receiverAddress || '-' }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">下单时间</span>
+            <span class="detail-value">{{ formatTime(detailOrder.gmtCreated) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 评价弹窗 -->
+    <div v-if="commentOrder" class="modal-overlay" @click.self="commentOrder = null">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>评价商品</h3>
+          <button class="modal-close" @click="commentOrder = null">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div v-if="commentOrder" class="modal-body">
+          <div class="comment-product">
+            <img v-if="commentOrder.productImg" class="comment-product-img" :src="commentOrder.productImg" :alt="commentOrder.productName" loading="lazy" />
+            <span class="comment-product-name">{{ commentOrder.productName || '商品' }}</span>
+          </div>
+          <div class="rating-input">
+            <span
+              v-for="n in 5"
+              :key="n"
+              class="star big"
+              :class="{ filled: n <= commentRating }"
+              @click="commentRating = n"
+            >★</span>
+            <span class="rating-text">{{ ratingText }}</span>
+          </div>
+          <textarea v-model="commentContent" class="comment-textarea" rows="4" maxlength="500" placeholder="分享您的使用体验（必填，最多 500 字）"></textarea>
+          <div class="modal-actions">
+            <button class="btn-cancel" @click="commentOrder = null">取消</button>
+            <button class="btn-submit" :disabled="submitting" @click="submitComment">
+              {{ submitting ? '提交中...' : '提交评价' }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -69,58 +183,89 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { queryRecentPaySuccess } from '../api/order'
-import { payOrder } from '../api/payment'
+import { listOrders, cancelOrder, confirmReceipt, applyRefund } from '../api/order'
+import { addComment } from '../api/comment'
 
 const router = useRouter()
 
 const orders = ref([])
 const loading = ref(true)
 const activeTab = ref('all')
+const detailOrder = ref(null)
+const currentPage = ref(1)
+const pageSize = 10
+const totalPages = ref(1)
+const totalCount = ref(0)
 
-const tabs = [
-  { label: '全部', value: 'all' },
-  { label: '待付款', value: 0 },
-  { label: '已付款', value: 1 },
-  { label: '已关闭', value: 2 }
-]
+// 评价弹窗
+const commentOrder = ref(null)
+const commentRating = ref(5)
+const commentContent = ref('')
+const submitting = ref(false)
 
-const filteredOrders = computed(() => {
-  if (activeTab.value === 'all') {
-    return orders.value
-  }
-  return orders.value.filter(order => order.status === activeTab.value)
+const ratingText = computed(() => {
+  return ['', '很差', '较差', '一般', '满意', '非常满意'][commentRating.value] || ''
 })
 
-function getOrderCount(status) {
-  return orders.value.filter(order => order.status === status).length
-}
+// 与后端 OrderStatus 枚举一致
+const tabs = [
+  { label: '全部', value: 'all' },
+  { label: '待付款', value: 'WAIT_BUYER_PAY' },
+  { label: '待发货', value: 'TRADE_PAID_SUCCESS' },
+  { label: '待收货', value: 'TRADE_SHIPPED' },
+  { label: '已完成', value: 'TRADE_COMPLETED' },
+  { label: '已关闭', value: 'TRADE_CLOSED' }
+]
 
 function switchTab(value) {
+  if (activeTab.value === value) return
   activeTab.value = value
+  currentPage.value = 1
+  loadOrders(1)
 }
 
 function statusText(status) {
   const map = {
-    0: '待付款',
-    1: '已付款',
-    2: '已关闭'
+    'WAIT_BUYER_PAY': '待付款',
+    'TRADE_PAID_SUCCESS': '待发货',
+    'TRADE_CLOSED': '已关闭',
+    'TRADE_PAID_FAILED': '支付失败',
+    'TRADE_SHIPPED': '待收货',
+    'TRADE_COMPLETED': '已完成',
+    'TRADE_REFUNDING': '退款中',
+    'TRADE_REFUNDED': '已退款'
   }
   return map[status] || '未知'
 }
 
 function statusClass(status) {
   const map = {
-    0: 'status-pending',
-    1: 'status-paid',
-    2: 'status-closed'
+    'WAIT_BUYER_PAY': 'status-pending',
+    'TRADE_PAID_SUCCESS': 'status-paid',
+    'TRADE_SHIPPED': 'status-shipped',
+    'TRADE_COMPLETED': 'status-completed',
+    'TRADE_REFUNDING': 'status-refunding',
+    'TRADE_REFUNDED': 'status-refunded',
+    'TRADE_CLOSED': 'status-closed',
+    'TRADE_PAID_FAILED': 'status-closed'
   }
   return map[status] || ''
+}
+
+function formatPrice(price) {
+  const n = Number(price || 0)
+  return n.toFixed(2)
+}
+
+function formatSize(size) {
+  if (size === null || size === undefined || size === '') return ''
+  return String(Number(size))
 }
 
 function formatTime(time) {
   if (!time) return ''
   const d = new Date(time)
+  if (isNaN(d.getTime())) return String(time)
   const year = d.getFullYear()
   const month = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
@@ -130,13 +275,14 @@ function formatTime(time) {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
 
-async function loadOrders() {
+async function loadOrders(page) {
   loading.value = true
   try {
-    const res = await queryRecentPaySuccess({})
-    if (res.data.code === 200) {
-      orders.value = res.data.data || []
-    }
+    const res = await listOrders(activeTab.value === 'all' ? null : activeTab.value, page, pageSize)
+    // res.data 为 Paging<Order>：{ pageNum, pageSize, totalPage, totalCount, data }
+    orders.value = res.data.data || []
+    totalPages.value = res.data.totalPage || 1
+    totalCount.value = res.data.totalCount || 0
   } catch (error) {
     console.error('加载订单失败:', error)
   } finally {
@@ -144,30 +290,89 @@ async function loadOrders() {
   }
 }
 
+function changePage(page) {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+  loadOrders(page)
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
 async function handlePay(order) {
-  try {
-    const payRes = await payOrder({
-      orderId: order.id || order.orderId,
-      payType: 1
-    })
-    if (payRes.data.code === 200) {
-      router.push({ name: 'PaySuccess', query: { orderId: order.id || order.orderId } })
-    } else {
-      alert('支付失败：' + (payRes.data.msg || '请稍后重试'))
-    }
-  } catch (error) {
-    alert('支付请求失败，请稍后重试')
-  }
+  router.push({ name: 'Pay', query: { orderNumber: order.orderNumber } })
 }
 
 function handleCancel(order) {
-  if (confirm('确定要取消该订单吗？')) {
-    order.status = 2
+  if (!confirm(`确定要取消订单 ${order.orderNumber} 吗？取消后库存将自动回滚。`)) return
+  cancelOrder(order.orderNumber)
+    .then(() => {
+      alert('订单已取消')
+      loadOrders(currentPage.value)
+    })
+    .catch(e => {
+      alert('取消失败：' + (e.message || '请稍后重试'))
+    })
+}
+
+async function handleApplyRefund(order) {
+  if (!confirm(`确定要对订单 ${order.orderNumber} 申请退款吗？提交后将进入商家审核。`)) return
+  applyRefund(order.orderNumber)
+    .then(() => {
+      alert('退款申请已提交，等待商家处理')
+      loadOrders(currentPage.value)
+    })
+    .catch(e => {
+      alert('申请失败：' + (e.message || '请稍后重试'))
+    })
+}
+
+async function handleConfirmReceipt(order) {
+  if (!confirm(`确认已收到订单 ${order.orderNumber} 的商品吗？`)) return
+  confirmReceipt(order.orderNumber)
+    .then(() => {
+      alert('已确认收货')
+      loadOrders(currentPage.value)
+    })
+    .catch(e => {
+      alert('操作失败：' + (e.message || '请稍后重试'))
+    })
+}
+
+function openDetail(order) {
+  detailOrder.value = order
+}
+
+function openComment(order) {
+  commentOrder.value = order
+  commentRating.value = 5
+  commentContent.value = ''
+}
+
+async function submitComment() {
+  if (!commentContent.value.trim()) {
+    alert('请填写评价内容')
+    return
+  }
+  submitting.value = true
+  try {
+    const productId = commentOrder.value.productDetail && commentOrder.value.productDetail.productId
+    await addComment({
+      productId,
+      orderNumber: commentOrder.value.orderNumber,
+      rating: commentRating.value,
+      content: commentContent.value.trim()
+    })
+    alert('评价成功，感谢您的反馈！')
+    commentOrder.value = null
+    loadOrders(currentPage.value)
+  } catch (error) {
+    alert('评价失败：' + (error.message || '请稍后重试'))
+  } finally {
+    submitting.value = false
   }
 }
 
 onMounted(() => {
-  loadOrders()
+  loadOrders(1)
 })
 </script>
 
@@ -308,6 +513,26 @@ onMounted(() => {
   background: var(--color-bg-overlay);
 }
 
+.status-shipped {
+  color: #0e7490;
+  background: rgba(14, 116, 148, 0.10);
+}
+
+.status-completed {
+  color: var(--color-success);
+  background: var(--color-success-light);
+}
+
+.status-refunding {
+  color: #b45309;
+  background: rgba(180, 83, 9, 0.10);
+}
+
+.status-refunded {
+  color: #be123c;
+  background: rgba(190, 18, 60, 0.10);
+}
+
 .order-body {
   display: flex;
   justify-content: space-between;
@@ -336,6 +561,24 @@ onMounted(() => {
   font-size: 22px;
   font-weight: 700;
   color: var(--color-price);
+}
+
+.order-price-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.order-discount {
+  font-size: 12px;
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.discount-value {
+  color: var(--color-success);
+  font-weight: 600;
 }
 
 .order-footer {
@@ -390,6 +633,37 @@ onMounted(() => {
   background: var(--color-danger-light);
 }
 
+.btn-refund {
+  padding: 8px 24px;
+  background: transparent;
+  color: #b45309;
+  border: 1px solid #b45309;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.btn-refund:hover {
+  background: rgba(180, 83, 9, 0.08);
+}
+
+.btn-confirm {
+  padding: 8px 24px;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  color: #fff;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  transition: all var(--transition-fast);
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
+}
+
+.btn-confirm:hover {
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+  transform: translateY(-1px);
+}
+
 .loading-state {
   display: flex;
   flex-direction: column;
@@ -413,6 +687,160 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
+.order-product-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.order-product-img {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--color-bg-sunken);
+  flex-shrink: 0;
+}
+
+.order-product-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ========== 订单详情弹窗 ========== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+  padding: 20px;
+}
+
+.modal {
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 520px;
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--color-border);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.modal-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.modal-close:hover {
+  background: var(--color-bg-overlay);
+  color: var(--color-text);
+}
+
+.modal-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  font-size: 14px;
+}
+
+.detail-label {
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+.detail-value {
+  color: var(--color-text);
+  text-align: right;
+  word-break: break-all;
+}
+
+.mono {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+}
+
+.detail-product {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--color-bg-sunken);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.detail-img {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.detail-product-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-product-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-product-spec {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.detail-product-price {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.detail-product-total {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-price);
+  flex-shrink: 0;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -420,6 +848,160 @@ onMounted(() => {
   gap: 12px;
   padding: 80px 0;
   color: var(--color-text-tertiary);
+}
+
+/* ========== 分页控件 ========== */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 28px 0 8px;
+}
+
+.page-btn {
+  padding: 8px 20px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.page-btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+}
+
+/* ========== 评价按钮 ========== */
+.btn-comment {
+  padding: 8px 24px;
+  background: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.btn-comment:hover {
+  background: var(--color-primary-50);
+}
+
+/* ========== 评价弹窗 ========== */
+.comment-product {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--color-bg-sunken);
+  border-radius: var(--radius-sm);
+}
+
+.comment-product-img {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.comment-product-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rating-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.star.big {
+  font-size: 28px;
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+
+.star.big:hover {
+  transform: scale(1.15);
+}
+
+.star {
+  color: var(--color-border);
+}
+
+.star.filled {
+  color: #f5a623;
+}
+
+.rating-text {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  margin-left: 6px;
+}
+
+.comment-textarea {
+  width: 100%;
+  padding: 12px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.comment-textarea:focus {
+  border-color: var(--color-primary);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.btn-submit {
+  padding: 9px 28px;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
+}
+
+.btn-submit:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+}
+
+.btn-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .empty-state svg {

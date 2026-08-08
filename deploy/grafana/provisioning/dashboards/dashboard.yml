@@ -1,0 +1,16 @@
+# ============================================================
+# Grafana 看板自动配置（RR-8 监控告警）
+# 同目录下 qinghe-mall-overview.json 将被自动加载
+# ============================================================
+apiVersion: 1
+
+providers:
+  - name: qinghe-mall
+    type: file
+    orgId: 1
+    folder: 青禾商城
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

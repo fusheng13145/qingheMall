@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.SeckillActivityDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.SeckillActivityDO">
+        <id column="id" property="id" jdbcType="VARCHAR"/>
+        <result column="product_detail_id" property="productDetailId" jdbcType="VARCHAR"/>
+        <result column="seckill_price" property="seckillPrice" jdbcType="DECIMAL"/>
+        <result column="total_stock" property="totalStock" jdbcType="INTEGER"/>
+        <result column="remain_stock" property="remainStock" jdbcType="INTEGER"/>
+        <result column="start_time" property="startTime" jdbcType="TIMESTAMP"/>
+        <result column="end_time" property="endTime" jdbcType="TIMESTAMP"/>
+        <result column="status" property="status" jdbcType="VARCHAR"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+        <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
+        <result column="product_name" property="productName" jdbcType="VARCHAR"/>
+        <result column="product_img" property="productImg" jdbcType="VARCHAR"/>
+        <result column="original_price" property="originalPrice" jdbcType="DECIMAL"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, product_detail_id, seckill_price, total_stock, remain_stock,
+        start_time, end_time, status, gmt_created, gmt_modified
+    </sql>
+
+    <!-- 列表用：JOIN product_detail / product 填充展示字段 -->
+    <sql id="List_Column_List">
+        sa.id, sa.product_detail_id, sa.seckill_price, sa.total_stock, sa.remain_stock,
+        sa.start_time, sa.end_time, sa.status, sa.gmt_created, sa.gmt_modified,
+        pd.price as original_price, p.name as product_name, p.product_imgs as product_img
+    </sql>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.SeckillActivityDO">
+        INSERT INTO `seckill_activity`
+            (id, product_detail_id, seckill_price, total_stock, remain_stock,
+             start_time, end_time, status, gmt_created, gmt_modified)
+        VALUES
+            (#{id}, #{productDetailId}, #{seckillPrice}, #{totalStock}, #{remainStock},
+             #{startTime}, #{endTime}, #{status}, #{gmtCreated}, #{gmtModified})
+    </insert>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `seckill_activity`
+        WHERE id = #{id}
+    </select>
+
+    <select id="findActive" resultMap="BaseResultMap">
+        SELECT <include refid="List_Column_List"/>
+        FROM `seckill_activity` sa
+        LEFT JOIN `product_detail` pd ON pd.id = sa.product_detail_id
+        LEFT JOIN `product` p ON p.id = pd.product_id
+        WHERE sa.status = 'ONGOING'
+          AND sa.start_time &lt;= NOW() AND sa.end_time &gt;= NOW()
+        ORDER BY sa.start_time ASC
+    </select>
+
+    <select id="query" resultMap="BaseResultMap">
+        SELECT <include refid="List_Column_List"/>
+        FROM `seckill_activity` sa
+        LEFT JOIN `product_detail` pd ON pd.id = sa.product_detail_id
+        LEFT JOIN `product` p ON p.id = pd.product_id
+        <where>
+            <if test="status != null and status != ''">
+                sa.status = #{status}
+            </if>
+        </where>
+        ORDER BY sa.gmt_created DESC
+    </select>
+
+    <update id="update" parameterType="com.qinghe.mall.dataobject.SeckillActivityDO">
+        UPDATE `seckill_activity`
+        SET product_detail_id = #{productDetailId}, seckill_price = #{seckillPrice},
+            total_stock = #{totalStock}, remain_stock = #{remainStock},
+            start_time = #{startTime}, end_time = #{endTime}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE `seckill_activity`
+        SET status = #{status}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="decreaseRemainStock">
+        UPDATE `seckill_activity`
+        SET remain_stock = remain_stock - #{quantity}, gmt_modified = NOW()
+        WHERE id = #{id} AND remain_stock &gt;= #{quantity}
+    </update>
+
+    <update id="increaseRemainStock">
+        UPDATE `seckill_activity`
+        SET remain_stock = remain_stock + #{quantity}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteByIdForTest">
+        DELETE FROM `seckill_activity` WHERE id = #{id}
+    </delete>
+
+</mapper>

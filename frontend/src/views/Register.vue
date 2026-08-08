@@ -9,6 +9,28 @@
         <p class="card-subtitle">注册开启您的品质购物之旅</p>
       </div>
       <div class="form-group">
+        <label class="form-label">注册身份</label>
+        <div class="role-selector">
+          <button type="button" class="role-option" :class="{ active: role === 'USER' }" @click="role = 'USER'">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/></svg>
+            <span>顾客（购物）</span>
+          </button>
+          <button type="button" class="role-option" :class="{ active: role === 'MERCHANT' }" @click="role = 'MERCHANT'">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V9"/><path d="M3 9h18a2 2 0 0 1 0 4H3a2 2 0 0 1 0-4z"/></svg>
+            <span>商家（开店）</span>
+          </button>
+        </div>
+      </div>
+      <div v-if="role === 'MERCHANT'" class="form-group">
+        <label class="form-label">店铺名称</label>
+        <input
+          v-model="shopName"
+          type="text"
+          class="form-input"
+          placeholder="请输入店铺名称（入驻申请，平台审核通过后开店）"
+        />
+      </div>
+      <div class="form-group">
         <label class="form-label">用户名</label>
         <div class="input-wrapper">
           <svg class="input-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -47,15 +69,15 @@
           />
         </div>
       </div>
-      <div class="error-message" v-if="errorMsg">
+      <div v-if="errorMsg" class="error-message">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
         {{ errorMsg }}
       </div>
-      <div class="success-message" v-if="successMsg">
+      <div v-if="successMsg" class="success-message">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         {{ successMsg }}
       </div>
-      <button class="btn-submit" @click="handleRegister" :disabled="submitting">
+      <button class="btn-submit" :disabled="submitting" @click="handleRegister">
         {{ submitting ? '注册中...' : '注册' }}
       </button>
       <div class="form-footer">
@@ -75,6 +97,8 @@ const router = useRouter()
 const userName = ref('')
 const pwd = ref('')
 const confirmPwd = ref('')
+const role = ref('USER')
+const shopName = ref('')
 const errorMsg = ref('')
 const successMsg = ref('')
 const submitting = ref(false)
@@ -99,20 +123,22 @@ async function handleRegister() {
     errorMsg.value = '两次输入的密码不一致'
     return
   }
+  if (role.value === 'MERCHANT' && !shopName.value.trim()) {
+    errorMsg.value = '商家注册请填写店铺名称'
+    return
+  }
 
   submitting.value = true
   try {
-    const res = await reg(userName.value.trim(), pwd.value)
-    if (res.data.code === 200) {
-      successMsg.value = '注册成功，即将跳转到登录页...'
-      setTimeout(() => {
-        router.push('/login')
-      }, 1500)
-    } else {
-      errorMsg.value = res.data.msg || '注册失败，请稍后重试'
-    }
+    await reg(userName.value.trim(), pwd.value, role.value, shopName.value.trim())
+    successMsg.value = role.value === 'MERCHANT'
+      ? '入驻申请已提交，等待平台审核通过后即可经营...'
+      : '注册成功，即将跳转到登录页...'
+    setTimeout(() => {
+      router.push('/login')
+    }, 1800)
   } catch (error) {
-    errorMsg.value = error.response?.data?.msg || '网络错误，请稍后重试'
+    errorMsg.value = error.message || '注册失败，请稍后重试'
   } finally {
     submitting.value = false
   }
@@ -178,6 +204,38 @@ async function handleRegister() {
   font-weight: 600;
   color: var(--color-text-secondary);
   margin-bottom: 8px;
+}
+
+.role-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.role-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 8px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.role-option:hover {
+  border-color: var(--color-primary);
+}
+
+.role-option.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-50);
+  color: var(--color-primary);
+  font-weight: 600;
 }
 
 .input-wrapper {

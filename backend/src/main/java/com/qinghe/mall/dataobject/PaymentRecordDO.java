@@ -3,6 +3,7 @@ package com.qinghe.mall.dataobject;
 import com.qinghe.mall.model.PayType;
 import com.qinghe.mall.model.PaymentRecord;
 import com.qinghe.mall.model.PaymentStatus;
+import java.math.BigDecimal;
 import java.util.Date;
 
 public class PaymentRecordDO {
@@ -12,7 +13,7 @@ public class PaymentRecordDO {
     private String orderNumber;
     private String channelPaymentId;
     private String channelType;
-    private Double amount;
+    private BigDecimal amount;
     private String payType;
     private String payStatus;
     private String extendStr;
@@ -60,11 +61,11 @@ public class PaymentRecordDO {
         this.channelType = channelType;
     }
 
-    public Double getAmount() {
+    public BigDecimal getAmount() {
         return amount;
     }
 
-    public void setAmount(Double amount) {
+    public void setAmount(BigDecimal amount) {
         this.amount = amount;
     }
 

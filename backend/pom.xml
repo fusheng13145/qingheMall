@@ -26,6 +26,9 @@
         <commons-codec.version>1.15</commons-codec.version>
         <commons-lang3.version>3.12.0</commons-lang3.version>
         <fastjson.version>1.2.83</fastjson.version>
+        <!-- JaCoCo 行覆盖率门禁下限（小数，0.50=50%）。CI `mvn test` 阶段校验，
+             低于该值构建失败。目标 ≥0.85，待实测基线后上调。 -->
+        <jacoco.line.min>0.50</jacoco.line.min>
     </properties>
 
     <dependencies>
@@ -63,6 +66,28 @@
             <version>${redisson.version}</version>
         </dependency>
 
+        <!-- AOP：@RateLimit 限流切面（P2-3） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
+        <!-- Actuator + Micrometer Prometheus：监控指标（P2-2，/actuator/prometheus） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <!-- Spring Session Redis：多实例 Session 共享（P3） -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
+
         <!-- MySQL -->
         <dependency>
             <groupId>mysql</groupId>
@@ -78,6 +103,12 @@
             <version>${commons-codec.version}</version>
         </dependency>
 
+        <!-- Spring Security Crypto：BCrypt 密码哈希（版本由 spring-boot-dependencies 管理） -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+
         <!-- Commons Lang3 -->
         <dependency>
             <groupId>org.apache.commons</groupId>
@@ -90,6 +121,25 @@
             <groupId>com.alibaba</groupId>
             <artifactId>fastjson</artifactId>
             <version>${fastjson.version}</version>
+        </dependency>
+
+        <!-- ZXing：微信 Native 支付二维码生成 -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.2</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>javase</artifactId>
+            <version>3.5.2</version>
+        </dependency>
+
+        <!-- BouncyCastle：兼容 PKCS1/PKCS8 格式的支付宝/微信密钥解析 -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk15on</artifactId>
+            <version>1.70</version>
         </dependency>
 
         <!-- Spring Boot Test -->
@@ -116,6 +166,56 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!-- JaCoCo 覆盖率：生成报告 + 行覆盖率门禁（RR-4 升级）。
+                 注意：项目路径含中文，JDK 21 下 JaCoCo agent 无法向中文路径写 jacoco.exec，
+                 故将数据文件重定向到 ASCII 的 ${java.io.tmpdir}，跨机可移植。
+                 门禁：check 绑定 test 阶段，CI `mvn test` 阶段校验；低于 jacoco.line.min 则构建失败。 -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.11</version>
+                <configuration>
+                    <destFile>${java.io.tmpdir}/qinghe-mall/jacoco.exec</destFile>
+                    <dataFile>${java.io.tmpdir}/qinghe-mall/jacoco.exec</dataFile>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>check</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.line.min}</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

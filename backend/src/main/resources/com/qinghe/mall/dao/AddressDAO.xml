@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.AddressDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.AddressDO">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="user_id" property="userId" jdbcType="BIGINT"/>
+        <result column="receiver_name" property="receiverName" jdbcType="VARCHAR"/>
+        <result column="receiver_phone" property="receiverPhone" jdbcType="VARCHAR"/>
+        <result column="receiver_address" property="receiverAddress" jdbcType="VARCHAR"/>
+        <result column="is_default" property="isDefault" jdbcType="INTEGER"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+        <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, receiver_name, receiver_phone, receiver_address, is_default, gmt_created, gmt_modified
+    </sql>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.AddressDO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO address (user_id, receiver_name, receiver_phone, receiver_address, is_default, gmt_created, gmt_modified)
+        VALUES (#{userId}, #{receiverName}, #{receiverPhone}, #{receiverAddress}, #{isDefault}, #{gmtCreated}, #{gmtModified})
+    </insert>
+
+    <update id="update" parameterType="com.qinghe.mall.dataobject.AddressDO">
+        UPDATE address
+        <set>
+            <if test="receiverName != null">receiver_name = #{receiverName},</if>
+            <if test="receiverPhone != null">receiver_phone = #{receiverPhone},</if>
+            <if test="receiverAddress != null">receiver_address = #{receiverAddress},</if>
+            <if test="isDefault != null">is_default = #{isDefault},</if>
+            gmt_modified = NOW()
+        </set>
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM address WHERE id = #{id}
+    </delete>
+
+    <update id="clearDefaultByUserId">
+        UPDATE address SET is_default = 0, gmt_modified = NOW() WHERE user_id = #{userId}
+    </update>
+
+    <update id="setDefault">
+        UPDATE address SET is_default = 1, gmt_modified = NOW() WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM address
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByUserId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM address
+        WHERE user_id = #{userId}
+        ORDER BY is_default DESC, gmt_created DESC
+    </select>
+
+    <select id="findDefaultByUserId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM address
+        WHERE user_id = #{userId} AND is_default = 1
+        LIMIT 1
+    </select>
+
+</mapper>

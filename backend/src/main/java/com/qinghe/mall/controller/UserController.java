@@ -1,7 +1,10 @@
 package com.qinghe.mall.controller;
 
+import com.qinghe.mall.config.RateLimit;
+import com.qinghe.mall.dataobject.UserDO;
 import com.qinghe.mall.model.Result;
 import com.qinghe.mall.model.User;
+import com.qinghe.mall.service.MerchantService;
 import com.qinghe.mall.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,31 +23,42 @@ public class UserController {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private MerchantService merchantService;
+
+    /**
+     * 注册限流：5 次/秒，容量 10（防批量注册）。
+     * role=USER 注册即生效；role=MERCHANT 创建商家账号 + 入驻申请（PENDING，待平台审核）。
+     */
+    @RateLimit(rate = 5, message = "注册过于频繁，请稍后再试")
     @PostMapping("/reg")
-    public Result<User> reg(@RequestParam("userName") String userName, @RequestParam("pwd") String pwd) {
-        try {
-            User user = userService.register(userName, pwd);
-            return Result.success(user);
-        } catch (RuntimeException e) {
-            return Result.fail(e.getMessage());
+    public Result<User> reg(@RequestParam("userName") String userName,
+                            @RequestParam("pwd") String pwd,
+                            @RequestParam(value = "role", defaultValue = "USER") String role,
+                            @RequestParam(value = "shopName", required = false) String shopName) {
+        User user;
+        if (UserDO.ROLE_MERCHANT.equals(role)) {
+            user = merchantService.registerMerchant(userName, pwd, shopName, null, null);
+        } else {
+            user = userService.register(userName, pwd);
         }
+        user.setPwd(null);
+        return Result.success(user);
     }
 
+    /** 登录限流：5 次/秒，容量 10（防暴力破解） */
+    @RateLimit(rate = 5, message = "登录过于频繁，请稍后再试")
     @PostMapping("/login")
     public Result<User> login(@RequestParam("userName") String userName, @RequestParam("pwd") String pwd,
                               HttpServletRequest request) {
-        try {
-            User user = userService.login(userName, pwd);
-            request.getSession().setAttribute("userId", user.getId());
-            request.getSession().setAttribute("userName", user.getUserName());
-            request.getSession().setAttribute("nickName", user.getNickName());
-            request.getSession().setAttribute("role", user.getRole());
-            // 不返回密码
-            user.setPwd(null);
-            return Result.success(user);
-        } catch (RuntimeException e) {
-            return Result.fail(e.getMessage());
-        }
+        User user = userService.login(userName, pwd);
+        request.getSession().setAttribute("userId", user.getId());
+        request.getSession().setAttribute("userName", user.getUserName());
+        request.getSession().setAttribute("nickName", user.getNickName());
+        request.getSession().setAttribute("role", user.getRole());
+        // 不返回密码
+        user.setPwd(null);
+        return Result.success(user);
     }
 
     @GetMapping("/logout")
@@ -54,6 +68,25 @@ public class UserController {
         request.getSession().removeAttribute("nickName");
         request.getSession().removeAttribute("role");
         return Result.success();
+    }
+
+    /**
+     * 更新个人资料（昵称/头像）。
+     */
+    @PostMapping("/updateProfile")
+    public Result<User> updateProfile(@RequestParam(value = "nickName", required = false) String nickName,
+                                      @RequestParam(value = "avatar", required = false) String avatar,
+                                      HttpServletRequest request) {
+        Object userIdObj = request.getSession().getAttribute("userId");
+        if (userIdObj == null) {
+            return Result.fail(401, "未登录");
+        }
+        User user = userService.updateProfile((Long) userIdObj, nickName, avatar);
+        // 同步 Session 中的昵称
+        if (user != null && user.getNickName() != null) {
+            request.getSession().setAttribute("nickName", user.getNickName());
+        }
+        return Result.success(user);
     }
 
     @GetMapping("/checkLogin")

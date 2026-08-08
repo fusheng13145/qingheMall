@@ -5,6 +5,11 @@ import java.time.LocalDateTime;
 
 public class UserDO {
 
+    /** 角色常量（M6 平台化：顾客/商家/管理员） */
+    public static final String ROLE_USER = "USER";
+    public static final String ROLE_MERCHANT = "MERCHANT";
+    public static final String ROLE_ADMIN = "ADMIN";
+
     private Long id;
     private String userName;
     private String pwd;

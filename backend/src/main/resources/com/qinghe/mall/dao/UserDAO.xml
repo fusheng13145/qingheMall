@@ -40,10 +40,43 @@
         WHERE id = #{id}
     </select>
 
+    <select id="findByIds" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <select id="countAll" resultType="long">
+        SELECT COUNT(*) FROM user
+    </select>
+
     <update id="updateRole">
         UPDATE user
         SET role = #{role}, gmt_modified = NOW()
         WHERE id = #{id}
     </update>
+
+    <update id="updateProfile">
+        UPDATE user
+        <set>
+            <if test="nickName != null">nick_name = #{nickName},</if>
+            <if test="avatar != null">avatar = #{avatar},</if>
+            gmt_modified = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <update id="updatePwd">
+        UPDATE user
+        SET pwd = #{pwd}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteByIdForTest">
+        DELETE FROM user WHERE id = #{id}
+    </delete>
 
 </mapper>

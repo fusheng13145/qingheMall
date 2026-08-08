@@ -1,0 +1,26 @@
+# ============================================================
+# Prometheus 抓取配置（P2-2 监控告警）
+# 用法：docker compose 中 prometheus 服务挂载本文件
+# 抓取目标：backend 容器的 /actuator/prometheus 指标端点
+# ============================================================
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# 告警规则文件（由 docker-compose 挂载到 /etc/prometheus/alert.rules.yml）
+rule_files:
+  - "/etc/prometheus/alert.rules.yml"
+
+# 告警通知（可选）：如需将告警推送至 Alertmanager，取消下方注释并补齐 alertmanager 服务
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: "qinghe-mall-backend"
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["backend:8080"]
+        labels:
+          application: qinghe-mall

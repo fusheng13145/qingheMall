@@ -5,7 +5,7 @@
     <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.ProductDetailDO">
         <id column="id" property="id" jdbcType="VARCHAR"/>
         <result column="product_id" property="productId" jdbcType="VARCHAR"/>
-        <result column="price" property="price" jdbcType="DOUBLE"/>
+        <result column="price" property="price" jdbcType="DECIMAL"/>
         <result column="size" property="size" jdbcType="DOUBLE"/>
         <result column="stock" property="stock" jdbcType="INTEGER"/>
         <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
@@ -28,9 +28,39 @@
         WHERE id = #{id}
     </select>
 
+    <select id="findByIds" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM product_detail
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
     <update id="updateStock">
         UPDATE product_detail
         SET stock = #{stock}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.ProductDetailDO">
+        INSERT INTO product_detail (id, product_id, price, size, stock, gmt_created, gmt_modified)
+        VALUES (#{id}, #{productId}, #{price}, #{size}, #{stock}, #{gmtCreated}, #{gmtModified})
+    </insert>
+
+    <delete id="deleteByProductId">
+        DELETE FROM product_detail WHERE product_id = #{productId}
+    </delete>
+
+    <update id="decreaseStock">
+        UPDATE product_detail
+        SET stock = stock - #{quantity}, gmt_modified = NOW()
+        WHERE id = #{id} AND stock >= #{quantity}
+    </update>
+
+    <update id="increaseStock">
+        UPDATE product_detail
+        SET stock = stock + #{quantity}, gmt_modified = NOW()
         WHERE id = #{id}
     </update>
 

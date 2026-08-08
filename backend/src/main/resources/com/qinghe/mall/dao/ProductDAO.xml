@@ -5,7 +5,10 @@
     <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.ProductDO">
         <id column="id" property="id" jdbcType="VARCHAR"/>
         <result column="name" property="name" jdbcType="VARCHAR"/>
-        <result column="price" property="price" jdbcType="DOUBLE"/>
+        <result column="brand" property="brand" jdbcType="VARCHAR"/>
+        <result column="merchant_id" property="merchantId" jdbcType="BIGINT"/>
+        <result column="status" property="status" jdbcType="VARCHAR"/>
+        <result column="price" property="price" jdbcType="DECIMAL"/>
         <result column="purchase_num" property="purchaseNum" jdbcType="INTEGER"/>
         <result column="product_intro" property="productIntro" jdbcType="VARCHAR"/>
         <result column="product_imgs" property="productImgs" jdbcType="VARCHAR"/>
@@ -14,13 +17,34 @@
     </resultMap>
 
     <sql id="Base_Column_List">
-        id, name, price, purchase_num, product_intro, product_imgs, gmt_created, gmt_modified
+        id, name, brand, merchant_id, status, price, purchase_num, product_intro, product_imgs, gmt_created, gmt_modified
+    </sql>
+
+    <!-- 动态条件：名称关键词 LIKE / 品牌筛选 / 排序 -->
+    <sql id="Search_Condition">
+        <where>
+            <if test="keyword != null and keyword != ''">
+                AND name LIKE CONCAT('%', #{keyword}, '%')
+            </if>
+            <if test="brand != null and brand != ''">
+                AND brand = #{brand}
+            </if>
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+        </where>
     </sql>
 
     <select id="queryAll" resultMap="BaseResultMap">
         SELECT <include refid="Base_Column_List"/>
         FROM product
-        ORDER BY gmt_created DESC
+        <include refid="Search_Condition"/>
+        <choose>
+            <when test="sort == 'sales_desc'">ORDER BY purchase_num DESC, gmt_created DESC</when>
+            <when test="sort == 'price_asc'">ORDER BY price ASC, gmt_created DESC</when>
+            <when test="sort == 'price_desc'">ORDER BY price DESC, gmt_created DESC</when>
+            <otherwise>ORDER BY gmt_created DESC</otherwise>
+        </choose>
     </select>
 
     <select id="findById" resultMap="BaseResultMap">
@@ -29,15 +53,46 @@
         WHERE id = #{id}
     </select>
 
+    <select id="findByIds" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM product
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <!-- 去重品牌列表（供筛选下拉） -->
+    <select id="listBrands" resultType="string">
+        SELECT DISTINCT brand FROM product WHERE brand IS NOT NULL AND brand != '' ORDER BY brand
+    </select>
+
+    <!-- 商家店铺商品（M6：归属过滤 + 关键词 + 状态） -->
+    <select id="queryByMerchantId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM product
+        WHERE merchant_id = #{merchantId}
+        <if test="keyword != null and keyword != ''">
+            AND name LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY gmt_created DESC
+    </select>
+
     <insert id="insert" parameterType="com.qinghe.mall.dataobject.ProductDO">
-        INSERT INTO product (id, name, price, purchase_num, product_intro, product_imgs, gmt_created, gmt_modified)
-        VALUES (#{id}, #{name}, #{price}, #{purchaseNum}, #{productIntro}, #{productImgs}, #{gmtCreated}, #{gmtModified})
+        INSERT INTO product (id, name, brand, merchant_id, status, price, purchase_num, product_intro, product_imgs, gmt_created, gmt_modified)
+        VALUES (#{id}, #{name}, #{brand}, #{merchantId}, #{status}, #{price}, #{purchaseNum}, #{productIntro}, #{productImgs}, #{gmtCreated}, #{gmtModified})
     </insert>
 
     <update id="update" parameterType="com.qinghe.mall.dataobject.ProductDO">
         UPDATE product
         <set>
             <if test="name != null">name = #{name},</if>
+            <if test="brand != null">brand = #{brand},</if>
+            <if test="merchantId != null">merchant_id = #{merchantId},</if>
+            <if test="status != null">status = #{status},</if>
             <if test="price != null">price = #{price},</if>
             <if test="purchaseNum != null">purchase_num = #{purchaseNum},</if>
             <if test="productIntro != null">product_intro = #{productIntro},</if>
@@ -50,5 +105,11 @@
     <delete id="deleteById">
         DELETE FROM product WHERE id = #{id}
     </delete>
+
+    <update id="increasePurchaseNum">
+        UPDATE product
+        SET purchase_num = purchase_num + #{num}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
 
 </mapper>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.SeckillOrderDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.SeckillOrderDO">
+        <id column="id" property="id" jdbcType="VARCHAR"/>
+        <result column="user_id" property="userId" jdbcType="BIGINT"/>
+        <result column="activity_id" property="activityId" jdbcType="VARCHAR"/>
+        <result column="product_detail_id" property="productDetailId" jdbcType="VARCHAR"/>
+        <result column="quantity" property="quantity" jdbcType="INTEGER"/>
+        <result column="order_number" property="orderNumber" jdbcType="VARCHAR"/>
+        <result column="status" property="status" jdbcType="VARCHAR"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, activity_id, product_detail_id, quantity, order_number, status, gmt_created
+    </sql>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.SeckillOrderDO">
+        INSERT INTO `seckill_order`
+            (id, user_id, activity_id, product_detail_id, quantity, order_number, status, gmt_created)
+        VALUES
+            (#{id}, #{userId}, #{activityId}, #{productDetailId}, #{quantity}, #{orderNumber}, #{status}, #{gmtCreated})
+    </insert>
+
+    <select id="findByOrderNumber" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `seckill_order`
+        WHERE order_number = #{orderNumber}
+    </select>
+
+    <select id="findByUserAndActivity" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `seckill_order`
+        WHERE user_id = #{userId} AND activity_id = #{activityId}
+    </select>
+
+    <update id="updateStatus">
+        UPDATE `seckill_order`
+        SET status = #{status}
+        WHERE order_number = #{orderNumber} AND status = 'CREATED'
+    </update>
+
+    <delete id="deleteByActivityIdForTest">
+        DELETE FROM `seckill_order` WHERE activity_id = #{activityId}
+    </delete>
+
+</mapper>

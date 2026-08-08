@@ -24,7 +24,7 @@
           <tbody>
             <tr v-for="product in products" :key="product.id">
               <td class="product-name">{{ product.name }}</td>
-              <td class="price">&yen;{{ product.price?.toFixed(2) }}</td>
+              <td class="price">&yen;{{ Number(product.price || 0).toFixed(2) }}</td>
               <td>{{ product.purchaseNum }}</td>
               <td class="actions">
                 <button class="btn-action btn-edit" @click="openEditModal(product)">编辑</button>
@@ -61,11 +61,18 @@
           </div>
           <div class="form-group">
             <label>商品简介</label>
-            <textarea v-model="form.intro" rows="3" placeholder="请输入商品简介"></textarea>
+            <textarea v-model="form.productIntro" rows="3" placeholder="请输入商品简介"></textarea>
           </div>
           <div class="form-group">
-            <label>商品图片URL</label>
-            <input v-model="form.productImgs" type="text" placeholder="请输入图片URL" />
+            <label>商品图片URL（多图用分号/空格分隔）</label>
+            <div class="img-upload-row">
+              <input v-model="form.productImgs" type="text" placeholder="https://... 或 /uploads/xxx.jpg" />
+              <label class="btn-upload">
+                上传图片
+                <input type="file" accept="image/*" hidden @change="handleUpload" />
+              </label>
+            </div>
+            <span v-if="uploading" class="upload-tip">上传中...</span>
           </div>
         </div>
         <div class="modal-footer">
@@ -80,15 +87,17 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getProductList, addProduct, updateProduct, deleteProduct } from '../../api/admin'
+import { uploadImage } from '../../api/file'
 
 const products = ref([])
 const showModal = ref(false)
 const isEditing = ref(false)
+const uploading = ref(false)
 const form = ref({
   id: '',
   name: '',
   price: null,
-  intro: '',
+  productIntro: '',
   productImgs: ''
 })
 
@@ -99,17 +108,16 @@ onMounted(async () => {
 async function loadProducts() {
   try {
     const res = await getProductList()
-    if (res.data.code === 200) {
-      products.value = res.data.data.records || res.data.data || []
-    }
+    // res.data 为 Paging<Product>，列表在 data 字段
+    products.value = res.data.data || []
   } catch (e) {
-    // ignore
+    alert('加载商品列表失败：' + (e.message || '请稍后重试'))
   }
 }
 
 function openAddModal() {
   isEditing.value = false
-  form.value = { id: '', name: '', price: null, intro: '', productImgs: '' }
+  form.value = { id: '', name: '', price: null, productIntro: '', productImgs: '' }
   showModal.value = true
 }
 
@@ -123,8 +131,34 @@ function closeModal() {
   showModal.value = false
 }
 
+// 上传图片：成功后将返回 URL 追加到图片字段（多图用分号分隔）
+async function handleUpload(event) {
+  const file = event.target.files && event.target.files[0]
+  event.target.value = ''
+  if (!file) return
+  uploading.value = true
+  try {
+    const res = await uploadImage(file)
+    const url = res.data.url
+    form.value.productImgs = form.value.productImgs
+      ? form.value.productImgs.trim() + ';' + url
+      : url
+  } catch (e) {
+    alert('上传失败：' + (e.message || '请稍后重试'))
+  } finally {
+    uploading.value = false
+  }
+}
+
 async function handleSubmit() {
-  if (!form.value.name || form.value.price == null) return
+  if (!form.value.name) {
+    alert('请填写商品名称')
+    return
+  }
+  if (form.value.price == null || form.value.price === '') {
+    alert('请填写商品价格')
+    return
+  }
   try {
     if (isEditing.value) {
       await updateProduct(form.value)
@@ -134,7 +168,7 @@ async function handleSubmit() {
     await loadProducts()
     closeModal()
   } catch (e) {
-    // ignore
+    alert('保存失败：' + (e.message || '请稍后重试'))
   }
 }
 
@@ -144,7 +178,7 @@ async function handleDelete(product) {
     await deleteProduct(product.id)
     await loadProducts()
   } catch (e) {
-    // ignore
+    alert('删除失败：' + (e.message || '请稍后重试'))
   }
 }
 </script>
@@ -371,6 +405,37 @@ async function handleDelete(product) {
 
 .form-group textarea {
   resize: vertical;
+}
+
+.img-upload-row {
+  display: flex;
+  gap: 8px;
+}
+
+.img-upload-row input {
+  flex: 1;
+}
+
+.btn-upload {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: var(--color-primary-50);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-upload:hover {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.upload-tip {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
 }
 
 .modal-footer {

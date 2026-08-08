@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.CommentDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.CommentDO">
+        <id column="id" property="id" jdbcType="VARCHAR"/>
+        <result column="user_id" property="userId" jdbcType="BIGINT"/>
+        <result column="product_id" property="productId" jdbcType="VARCHAR"/>
+        <result column="order_number" property="orderNumber" jdbcType="VARCHAR"/>
+        <result column="rating" property="rating" jdbcType="INTEGER"/>
+        <result column="content" property="content" jdbcType="VARCHAR"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+        <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.CommentDO">
+        INSERT INTO `comment` (id, user_id, product_id, order_number, rating, content, gmt_created, gmt_modified)
+        VALUES (#{id}, #{userId}, #{productId}, #{orderNumber}, #{rating}, #{content}, #{gmtCreated}, #{gmtModified})
+    </insert>
+
+    <select id="findByProductId" resultMap="BaseResultMap">
+        SELECT id, user_id, product_id, order_number, rating, content, gmt_created, gmt_modified
+        FROM `comment`
+        WHERE product_id = #{productId}
+        ORDER BY gmt_created DESC
+    </select>
+
+    <select id="countByProductId" resultType="long">
+        SELECT COUNT(*) FROM `comment` WHERE product_id = #{productId}
+    </select>
+
+    <select id="avgRatingByProductId" resultType="java.lang.Double">
+        SELECT AVG(rating) FROM `comment` WHERE product_id = #{productId}
+    </select>
+
+    <select id="countByOrderNumber" resultType="int">
+        SELECT COUNT(*) FROM `comment` WHERE order_number = #{orderNumber}
+    </select>
+
+    <select id="findCommentedOrderNumbers" resultType="java.lang.String">
+        SELECT DISTINCT order_number FROM `comment`
+        WHERE order_number IN
+        <foreach collection="orderNumbers" item="orderNumber" open="(" separator="," close=")">
+            #{orderNumber}
+        </foreach>
+    </select>
+
+    <delete id="deleteByProductIdForTest">
+        DELETE FROM `comment` WHERE product_id = #{productId}
+    </delete>
+
+</mapper>

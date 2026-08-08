@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.CartDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.CartDO">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="user_id" property="userId" jdbcType="BIGINT"/>
+        <result column="product_detail_id" property="productDetailId" jdbcType="VARCHAR"/>
+        <result column="quantity" property="quantity" jdbcType="INTEGER"/>
+        <result column="selected" property="selected" jdbcType="INTEGER"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+        <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, product_detail_id, quantity, selected, gmt_created, gmt_modified
+    </sql>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.CartDO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cart (user_id, product_detail_id, quantity, selected, gmt_created, gmt_modified)
+        VALUES (#{userId}, #{productDetailId}, #{quantity}, #{selected}, #{gmtCreated}, #{gmtModified})
+        ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity), gmt_modified = NOW()
+    </insert>
+
+    <update id="updateQuantity">
+        UPDATE cart
+        SET quantity = #{quantity}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateSelected">
+        UPDATE cart
+        SET selected = #{selected}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM cart WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByUserAndDetail">
+        DELETE FROM cart WHERE user_id = #{userId} AND product_detail_id = #{productDetailId}
+    </delete>
+
+    <delete id="deleteSelectedByUserId">
+        DELETE FROM cart WHERE user_id = #{userId} AND selected = 1
+    </delete>
+
+    <select id="findByUserAndDetail" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM cart
+        WHERE user_id = #{userId} AND product_detail_id = #{productDetailId}
+    </select>
+
+    <select id="findByUserId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM cart
+        WHERE user_id = #{userId}
+        ORDER BY gmt_created DESC
+    </select>
+
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(*)
+        FROM cart
+        WHERE user_id = #{userId}
+    </select>
+
+</mapper>

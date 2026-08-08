@@ -26,15 +26,25 @@ public class ProductController {
 
     @GetMapping("/product/page")
     public Result<Paging<Product>> pageQuery(@RequestParam(value = "pagination", defaultValue = "1") Integer pagination,
-                                             @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize) {
+                                             @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize,
+                                             @RequestParam(value = "keyword", required = false) String keyword,
+                                             @RequestParam(value = "brand", required = false) String brand,
+                                             @RequestParam(value = "sort", required = false) String sort) {
         if (pagination < 1) {
             pagination = 1;
         }
         if (pageSize < 1 || pageSize > 50) {
             pageSize = 10;
         }
-        Paging<Product> paging = productService.queryPage(pagination, pageSize);
+        // 顾客端仅展示在售商品（status=ON，M6 上下架）
+        Paging<Product> paging = productService.queryOnSalePage(pagination, pageSize, keyword, brand, sort);
         return Result.success(paging);
+    }
+
+    /** 品牌列表（筛选下拉用） */
+    @GetMapping("/product/brands")
+    public Result<List<String>> listBrands() {
+        return Result.success(productService.listBrands());
     }
 
     @GetMapping("/product/get")

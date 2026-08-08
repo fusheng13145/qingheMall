@@ -31,26 +31,37 @@
           <tbody>
             <tr v-for="order in filteredOrders" :key="order.id">
               <td class="mono">{{ order.orderNumber }}</td>
-              <td>{{ order.userName }}</td>
-              <td>{{ order.productName }}</td>
-              <td class="price">&yen;{{ order.totalPrice?.toFixed(2) }}</td>
+              <td>{{ (order.user && order.user.userName) || '-' }}</td>
+              <td>{{ order.productName || '-' }}</td>
+              <td class="price">&yen;{{ Number(order.totalPrice || 0).toFixed(2) }}</td>
               <td>
                 <span class="status-badge" :class="getStatusClass(order.status)">
                   {{ getStatusText(order.status) }}
                 </span>
               </td>
-              <td class="time">{{ order.createTime }}</td>
+              <td class="time">{{ formatTime(order.gmtCreated) }}</td>
               <td class="actions">
-                <select
-                  class="status-select"
-                  :value="order.status"
-                  @change="handleStatusChange(order, $event)"
-                >
-                  <option value="WAIT_BUYER_PAY">待付款</option>
-                  <option value="TRADE_PAID_SUCCESS">已付款</option>
-                  <option value="TRADE_FINISHED">已完成</option>
-                  <option value="TRADE_CLOSED">已关闭</option>
-                </select>
+                <div class="action-group">
+                  <button v-if="order.status === 'TRADE_PAID_SUCCESS'" class="btn-ship" @click="handleShip(order)">发货</button>
+                  <template v-if="order.status === 'TRADE_REFUNDING'">
+                    <button class="btn-approve" @click="handleRefund(order, true)">同意</button>
+                    <button class="btn-reject" @click="handleRefund(order, false)">拒绝</button>
+                  </template>
+                  <select
+                    class="status-select"
+                    :value="order.status"
+                    @change="handleStatusChange(order, $event)"
+                  >
+                    <option value="WAIT_BUYER_PAY">待付款</option>
+                    <option value="TRADE_PAID_SUCCESS">待发货</option>
+                    <option value="TRADE_SHIPPED">待收货</option>
+                    <option value="TRADE_COMPLETED">已完成</option>
+                    <option value="TRADE_REFUNDING">退款中</option>
+                    <option value="TRADE_REFUNDED">已退款</option>
+                    <option value="TRADE_CLOSED">已关闭</option>
+                    <option value="TRADE_PAID_FAILED">支付失败</option>
+                  </select>
+                </div>
               </td>
             </tr>
             <tr v-if="filteredOrders.length === 0">
@@ -65,7 +76,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { getOrderList, updateOrderStatus } from '../../api/admin'
+import { getOrderList, updateOrderStatus, shipOrder, processRefund } from '../../api/admin'
 
 const orders = ref([])
 const currentFilter = ref('ALL')
@@ -73,9 +84,13 @@ const currentFilter = ref('ALL')
 const filters = [
   { label: '全部', value: 'ALL' },
   { label: '待付款', value: 'WAIT_BUYER_PAY' },
-  { label: '已付款', value: 'TRADE_PAID_SUCCESS' },
-  { label: '已完成', value: 'TRADE_FINISHED' },
-  { label: '已关闭', value: 'TRADE_CLOSED' }
+  { label: '待发货', value: 'TRADE_PAID_SUCCESS' },
+  { label: '待收货', value: 'TRADE_SHIPPED' },
+  { label: '已完成', value: 'TRADE_COMPLETED' },
+  { label: '退款中', value: 'TRADE_REFUNDING' },
+  { label: '已退款', value: 'TRADE_REFUNDED' },
+  { label: '已关闭', value: 'TRADE_CLOSED' },
+  { label: '支付失败', value: 'TRADE_PAID_FAILED' }
 ]
 
 const filteredOrders = computed(() => {
@@ -90,20 +105,22 @@ onMounted(async () => {
 async function loadOrders() {
   try {
     const res = await getOrderList()
-    if (res.data.code === 200) {
-      orders.value = res.data.data || []
-    }
+    orders.value = res.data || []
   } catch (e) {
-    // ignore
+    alert('加载订单列表失败：' + (e.message || '请稍后重试'))
   }
 }
 
 function getStatusText(status) {
   const map = {
     'WAIT_BUYER_PAY': '待付款',
-    'TRADE_PAID_SUCCESS': '已付款',
+    'TRADE_PAID_SUCCESS': '待发货',
     'TRADE_CLOSED': '已关闭',
-    'TRADE_FINISHED': '已完成'
+    'TRADE_PAID_FAILED': '支付失败',
+    'TRADE_SHIPPED': '待收货',
+    'TRADE_COMPLETED': '已完成',
+    'TRADE_REFUNDING': '退款中',
+    'TRADE_REFUNDED': '已退款'
   }
   return map[status] || status
 }
@@ -112,10 +129,27 @@ function getStatusClass(status) {
   const map = {
     'WAIT_BUYER_PAY': 'warning',
     'TRADE_PAID_SUCCESS': 'success',
+    'TRADE_SHIPPED': 'info',
+    'TRADE_COMPLETED': 'success',
+    'TRADE_REFUNDING': 'warning',
+    'TRADE_REFUNDED': 'danger',
     'TRADE_CLOSED': 'danger',
-    'TRADE_FINISHED': 'info'
+    'TRADE_PAID_FAILED': 'danger'
   }
   return map[status] || ''
+}
+
+function formatTime(time) {
+  if (!time) return ''
+  const d = new Date(time)
+  if (isNaN(d.getTime())) return String(time)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  const seconds = String(d.getSeconds()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
 
 async function handleStatusChange(order, event) {
@@ -129,6 +163,28 @@ async function handleStatusChange(order, event) {
     order.status = newStatus
   } catch (e) {
     event.target.value = order.status
+    alert('状态修改失败：' + (e.message || '请稍后重试'))
+  }
+}
+
+async function handleShip(order) {
+  if (!confirm(`确认将订单 ${order.orderNumber} 标记为已发货吗？`)) return
+  try {
+    await shipOrder(order.orderNumber)
+    order.status = 'TRADE_SHIPPED'
+  } catch (e) {
+    alert('发货失败：' + (e.message || '请稍后重试'))
+  }
+}
+
+async function handleRefund(order, approve) {
+  const tip = approve ? '同意退款' : '拒绝退款（订单将回退为已付款）'
+  if (!confirm(`确认${tip}：订单 ${order.orderNumber} 吗？`)) return
+  try {
+    await processRefund(order.orderNumber, approve)
+    order.status = approve ? 'TRADE_REFUNDED' : 'TRADE_PAID_SUCCESS'
+  } catch (e) {
+    alert('操作失败：' + (e.message || '请稍后重试'))
   }
 }
 </script>
@@ -261,7 +317,7 @@ async function handleStatusChange(order, event) {
 }
 
 .actions {
-  min-width: 120px;
+  min-width: 240px;
 }
 
 .status-select {
@@ -278,6 +334,56 @@ async function handleStatusChange(order, event) {
 
 .status-select:focus {
   border-color: var(--color-primary);
+}
+
+.action-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btn-ship,
+.btn-approve,
+.btn-reject {
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.btn-ship {
+  color: #fff;
+  background: var(--color-primary);
+}
+
+.btn-ship:hover {
+  background: var(--color-primary-dark);
+}
+
+.btn-approve {
+  color: var(--color-success);
+  border-color: var(--color-success);
+  background: var(--color-success-light);
+}
+
+.btn-approve:hover {
+  background: var(--color-success);
+  color: #fff;
+}
+
+.btn-reject {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+  background: var(--color-danger-light);
+}
+
+.btn-reject:hover {
+  background: var(--color-danger);
+  color: #fff;
 }
 
 .empty {

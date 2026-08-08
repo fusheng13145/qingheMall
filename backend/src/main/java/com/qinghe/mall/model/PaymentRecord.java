@@ -1,5 +1,6 @@
 package com.qinghe.mall.model;
 
+import java.math.BigDecimal;
 import java.util.Date;
 
 public class PaymentRecord {
@@ -9,7 +10,7 @@ public class PaymentRecord {
     private String orderNumber;
     private String channelPaymentId;
     private String channelType;
-    private Double amount;
+    private BigDecimal amount;
     private PayType payType;
     private PaymentStatus payStatus;
     private String extendStr;
@@ -57,11 +58,11 @@ public class PaymentRecord {
         this.channelType = channelType;
     }
 
-    public Double getAmount() {
+    public BigDecimal getAmount() {
         return amount;
     }
 
-    public void setAmount(Double amount) {
+    public void setAmount(BigDecimal amount) {
         this.amount = amount;
     }
 

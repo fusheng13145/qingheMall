@@ -1,20 +1,36 @@
 package com.qinghe.mall.service.impl;
 
 import com.qinghe.mall.dao.OrderDAO;
+import com.qinghe.mall.dao.CommentDAO;
 import com.qinghe.mall.dataobject.OrderDO;
 import com.qinghe.mall.model.Order;
 import com.qinghe.mall.model.OrderStatus;
+import com.qinghe.mall.model.Paging;
+import com.qinghe.mall.model.Product;
 import com.qinghe.mall.model.ProductDetail;
+import com.qinghe.mall.model.User;
 import com.qinghe.mall.service.OrderService;
 import com.qinghe.mall.service.ProductDetailService;
+import com.qinghe.mall.service.ProductService;
+import com.qinghe.mall.service.SeckillService;
+import com.qinghe.mall.service.StockLogService;
+import com.qinghe.mall.service.UserService;
 import com.qinghe.mall.util.UUIDUtils;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RedissonClient;
+import org.redisson.api.RLock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class OrderServiceImpl implements OrderService {
@@ -26,64 +42,433 @@ public class OrderServiceImpl implements OrderService {
     private ProductDetailService productDetailService;
 
     @Autowired
+    private ProductService productService;
+
+    @Autowired
+    private UserService userService;
+
+    @Autowired
     private RedissonClient redissonClient;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
+
+    @Autowired
+    private StockLogService stockLogService;
+
+    @Autowired
+    private CommentDAO commentDAO;
+
+    @Autowired
+    private com.qinghe.mall.service.CouponService couponService;
+
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private com.qinghe.mall.service.SeckillService seckillService;
+
+    @Autowired
+    private com.qinghe.mall.config.OrderTimeoutQueue orderTimeoutQueue;
 
     @Override
     public Order createOrder(Order order) {
+        return createOrder(order, null, null);
+    }
+
+    @Override
+    public Order createOrder(Order order, String userCouponId, BigDecimal discountAmount) {
         String productDetailId = order.getProductDetailId();
         if (productDetailId == null) {
             throw new RuntimeException("商品规格ID不能为空");
+        }
+        int quantity = order.getQuantity() != null && order.getQuantity() > 0 ? order.getQuantity() : 1;
+        // 单笔购买数量上限（P2-7：防批量扫库存/异常大单）
+        if (quantity > 99) {
+            throw new RuntimeException("单笔订单最多购买 99 件");
         }
 
         ProductDetail productDetail = productDetailService.findById(productDetailId);
         if (productDetail == null) {
             throw new RuntimeException("商品规格不存在");
         }
-        if (productDetail.getStock() <= 0) {
+        if (productDetail.getStock() < quantity) {
             throw new RuntimeException("库存不足");
         }
 
-        // 使用分布式锁保证库存安全
+        // 使用分布式锁保证同一规格的并发下单串行化
         String lockKey = "order:lock:" + productDetailId;
+        Order created;
         try {
-            boolean locked = redissonClient.getLock(lockKey).tryLock(3, 5, TimeUnit.SECONDS);
+            RLock lock = redissonClient.getLock(lockKey);
+            boolean locked = lock.tryLock(3, 5, TimeUnit.SECONDS);
             if (!locked) {
                 throw new RuntimeException("系统繁忙，请稍后重试");
             }
             try {
-                // 再次检查库存
-                productDetail = productDetailService.findById(productDetailId);
-                if (productDetail == null || productDetail.getStock() <= 0) {
-                    throw new RuntimeException("库存不足");
-                }
+                // 扣库存 + 插订单放在同一事务中：任一失败整体回滚。
+                // 事务通过 TransactionTemplate 在锁内提交（提交先于锁释放），
+                // 保证后续请求能读到最新库存，避免「锁释放但事务未提交」的并发窗口。
+                created = transactionTemplate.execute(status -> {
+                    // 扣减前库存（用于流水留痕）
+                    ProductDetail beforeDetail = productDetailService.findById(productDetailId);
+                    int beforeStock = beforeDetail == null ? 0 : beforeDetail.getStock();
 
-                // 扣减库存
-                productDetailService.updateStock(productDetailId, productDetail.getStock() - 1);
+                    // 原子扣减库存（stock >= quantity 才生效），双重保障不超卖
+                    boolean decreased = productDetailService.decreaseStock(productDetailId, quantity);
+                    if (!decreased) {
+                        throw new RuntimeException("库存不足");
+                    }
 
-                // 生成订单号
-                String orderNumber = generateOrderNumber();
+                    ProductDetail pd = productDetailService.findById(productDetailId);
 
-                OrderDO orderDO = new OrderDO();
-                orderDO.setId(UUIDUtils.uuid());
-                orderDO.setOrderNumber(orderNumber);
-                orderDO.setUserId(order.getUserId());
-                orderDO.setProductDetailId(productDetailId);
-                orderDO.setTotalPrice(productDetail.getPrice());
-                orderDO.setStatus(OrderStatus.WAIT_BUYER_PAY.name());
-                orderDO.setGmtCreated(new Date());
-                orderDO.setGmtModified(new Date());
-                orderDAO.insert(orderDO);
+                    // 生成订单号
+                    String orderNumber = generateOrderNumber();
 
-                Order result = orderDO.convertToModel();
-                result.setProductDetail(productDetail);
-                return result;
+                    // 优惠券核销（仅当传入 userCouponId 时）：事务内原子锁定并改写实付金额
+                    BigDecimal originalTotal = pd.getPrice().multiply(BigDecimal.valueOf(quantity));
+                    BigDecimal payable = originalTotal;
+                    if (StringUtils.isNotBlank(userCouponId)) {
+                        if (discountAmount == null) {
+                            throw new RuntimeException("优惠金额缺失");
+                        }
+                        // 锁定用户券（CAS：仅本人未使用的券可锁定），并绑定订单号
+                        couponService.lockCoupon(userCouponId, order.getUserId(), orderNumber);
+                        payable = originalTotal.subtract(discountAmount);
+                        if (payable.compareTo(BigDecimal.ZERO) < 0) {
+                            payable = BigDecimal.ZERO;
+                        }
+                    }
+
+                    OrderDO orderDO = new OrderDO();
+                    orderDO.setId(UUIDUtils.uuid());
+                    orderDO.setOrderNumber(orderNumber);
+                    orderDO.setUserId(order.getUserId());
+                    // 商家归属：由商品归属推导落库（NULL=平台自营，M6）
+                    Long merchantId = null;
+                    if (pd != null && StringUtils.isNotBlank(pd.getProductId())) {
+                        Product product = productService.findById(pd.getProductId());
+                        merchantId = product != null ? product.getMerchantId() : null;
+                    }
+                    orderDO.setMerchantId(merchantId);
+                    orderDO.setProductDetailId(productDetailId);
+                    orderDO.setQuantity(quantity);
+                    // 金额精确计算：实付 = 原价 - 优惠（优惠券将 totalPrice 改写为实付；
+                    // 原价可由 totalPrice + discountAmount 还原，支付链路无需改动）
+                    orderDO.setTotalPrice(payable);
+                    orderDO.setCouponId(userCouponId);
+                    // discount_amount 列为 NOT NULL，无券时显式置 0（避免绕过列默认值）
+                    orderDO.setDiscountAmount(discountAmount != null ? discountAmount : BigDecimal.ZERO);
+                    orderDO.setStatus(OrderStatus.WAIT_BUYER_PAY.name());
+                    orderDO.setReceiverName(order.getReceiverName());
+                    orderDO.setReceiverPhone(order.getReceiverPhone());
+                    orderDO.setReceiverAddress(order.getReceiverAddress());
+                    orderDO.setGmtCreated(new Date());
+                    orderDO.setGmtModified(new Date());
+                    orderDAO.insert(orderDO);
+
+                    // 库存流水留痕（与扣库存同事务）
+                    stockLogService.record(productDetailId, pd.getProductId(), orderNumber,
+                            StockLogService.TYPE_ORDER_DEDUCT, -quantity, beforeStock, beforeStock - quantity);
+
+                    Order result = orderDO.convertToModel();
+                    result.setProductDetail(pd);
+                    return result;
+                });
             } finally {
-                redissonClient.getLock(lockKey).unlock();
+                // 仅释放当前线程持有的锁；锁租期(5s)过期被他线程抢占后，
+                // isHeldByCurrentThread() 为 false，跳过 unlock 避免 IllegalMonitorStateException
+                if (lock.isHeldByCurrentThread()) {
+                    lock.unlock();
+                }
             }
+            // 事务已提交且锁已释放：延迟关单入队（超时未付自动关闭）
+            orderTimeoutQueue.offer(created.getOrderNumber());
+            return created;
         } catch (InterruptedException e) {
+            // 恢复中断状态后包装抛出，并保留原始异常链路，便于排查
             Thread.currentThread().interrupt();
-            throw new RuntimeException("创建订单失败");
+            throw new RuntimeException("创建订单被中断", e);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            // 保留原始异常 cause，不再吞掉堆栈
+            throw new RuntimeException("创建订单失败", e);
         }
+    }
+
+    @Override
+    public List<Order> batchCreateOrders(List<Order> orders) {
+        if (orders == null || orders.isEmpty()) {
+            throw new RuntimeException("下单商品不能为空");
+        }
+        // 优惠券：单笔订单专用——整批至多一笔携带券，且整批仅一笔
+        String userCouponId = null;
+        for (Order o : orders) {
+            if (StringUtils.isNotBlank(o.getCouponId())) {
+                if (userCouponId != null) {
+                    throw new RuntimeException("一次结算仅可使用一张优惠券");
+                }
+                userCouponId = o.getCouponId();
+            }
+        }
+        BigDecimal couponDiscount = null;
+        if (userCouponId != null) {
+            if (orders.size() > 1) {
+                throw new RuntimeException("优惠券仅支持单笔订单使用");
+            }
+            Order couponOrder = orders.get(0);
+            ProductDetail pd = productDetailService.findById(couponOrder.getProductDetailId());
+            if (pd == null) {
+                throw new RuntimeException("商品规格不存在");
+            }
+            int qty = couponOrder.getQuantity() != null && couponOrder.getQuantity() > 0
+                    ? couponOrder.getQuantity() : 1;
+            BigDecimal totalOrigin = pd.getPrice().multiply(BigDecimal.valueOf(qty));
+            // 后端权威校验并计算优惠额（校验归属/未用/上架/时间窗/门槛）
+            BigDecimal computed = couponService.validateAndComputeDiscount(
+                    userCouponId, couponOrder.getUserId(), totalOrigin);
+            // 前端传入的优惠额须与后端一致，防止伪造
+            BigDecimal provided = couponOrder.getDiscountAmount();
+            if (provided == null || provided.compareTo(computed) != 0) {
+                throw new RuntimeException("优惠金额校验失败");
+            }
+            couponDiscount = computed;
+        }
+        List<Order> created = new ArrayList<>();
+        for (Order order : orders) {
+            // 仅携带券的那一笔传优惠券参数（单笔专用，其余为 null）
+            boolean hasCoupon = StringUtils.equals(order.getCouponId(), userCouponId);
+            created.add(createOrder(order,
+                    hasCoupon ? userCouponId : null,
+                    hasCoupon ? couponDiscount : null));
+        }
+        return created;
+    }
+
+    @Override
+    public boolean cancelOrder(String orderNumber, Long userId) {
+        if (StringUtils.isBlank(orderNumber)) {
+            throw new RuntimeException("订单号不能为空");
+        }
+        Order order = findByOrderNumber(orderNumber);
+        if (order == null) {
+            throw new RuntimeException("订单不存在");
+        }
+        if (!order.getUserId().equals(userId)) {
+            throw new RuntimeException("无权操作此订单");
+        }
+        return closeAndRestoreStock(orderNumber, StockLogService.TYPE_ORDER_RESTORE);
+    }
+
+    @Override
+    public boolean closeExpiredOrder(String orderNumber) {
+        return closeAndRestoreStock(orderNumber, StockLogService.TYPE_EXPIRE_RESTORE);
+    }
+
+    @Override
+    public boolean shipOrder(String orderNumber) {
+        if (StringUtils.isBlank(orderNumber)) {
+            throw new IllegalArgumentException("订单号不能为空");
+        }
+        return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+            int updated = orderDAO.updateStatusWithGuard(
+                    orderNumber, OrderStatus.TRADE_PAID_SUCCESS.name(), OrderStatus.TRADE_SHIPPED.name());
+            if (updated <= 0) {
+                throw new RuntimeException("订单状态异常，无法发货（仅已付款订单可发货）");
+            }
+            return true;
+        }));
+    }
+
+    @Override
+    public boolean confirmReceipt(String orderNumber, Long userId) {
+        if (StringUtils.isBlank(orderNumber)) {
+            throw new IllegalArgumentException("订单号不能为空");
+        }
+        Order order = findByOrderNumber(orderNumber);
+        if (order == null) {
+            throw new RuntimeException("订单不存在");
+        }
+        if (!order.getUserId().equals(userId)) {
+            throw new RuntimeException("无权操作此订单");
+        }
+        return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+            int updated = orderDAO.updateStatusWithGuard(
+                    orderNumber, OrderStatus.TRADE_SHIPPED.name(), OrderStatus.TRADE_COMPLETED.name());
+            if (updated <= 0) {
+                throw new RuntimeException("订单状态异常，无法确认收货（仅已发货订单可确认）");
+            }
+            return true;
+        }));
+    }
+
+    @Override
+    public boolean applyRefund(String orderNumber, Long userId) {
+        if (StringUtils.isBlank(orderNumber)) {
+            throw new IllegalArgumentException("订单号不能为空");
+        }
+        Order order = findByOrderNumber(orderNumber);
+        if (order == null) {
+            throw new RuntimeException("订单不存在");
+        }
+        if (!order.getUserId().equals(userId)) {
+            throw new RuntimeException("无权操作此订单");
+        }
+        // 仅未发货的已付款订单可申请退款；已发货需走退货流程（本期未实现）
+        return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+            int updated = orderDAO.updateStatusWithGuard(
+                    orderNumber, OrderStatus.TRADE_PAID_SUCCESS.name(), OrderStatus.TRADE_REFUNDING.name());
+            if (updated <= 0) {
+                throw new RuntimeException("订单状态异常，无法申请退款（仅未发货的已付款订单可申请）");
+            }
+            return true;
+        }));
+    }
+
+    @Override
+    public boolean processRefund(String orderNumber, boolean approve) {
+        if (StringUtils.isBlank(orderNumber)) {
+            throw new IllegalArgumentException("订单号不能为空");
+        }
+        String target = approve ? OrderStatus.TRADE_REFUNDED.name() : OrderStatus.TRADE_PAID_SUCCESS.name();
+        return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+            int updated = orderDAO.updateStatusWithGuard(
+                    orderNumber, OrderStatus.TRADE_REFUNDING.name(), target);
+            if (updated <= 0) {
+                throw new RuntimeException("订单状态异常，无法处理退款（仅退款中订单可处理）");
+            }
+            // 拒绝退款（回退已付款）：释放被核销的优惠券，使其可再次使用
+            if (!approve) {
+                OrderDO od = orderDAO.findByOrderNumber(orderNumber);
+                if (od != null && StringUtils.isNotBlank(od.getCouponId())) {
+                    couponService.releaseCoupon(od.getCouponId());
+                }
+            }
+            return true;
+        }));
+    }
+
+    @Override
+    public Paging<Order> listByMerchant(Long merchantId, String status, int pageNum, int pageSize) {
+        if (merchantId == null) {
+            throw new RuntimeException("商家信息缺失");
+        }
+        if (pageNum < 1) {
+            pageNum = 1;
+        }
+        if (pageSize < 1 || pageSize > 50) {
+            pageSize = 10;
+        }
+        com.github.pagehelper.Page<OrderDO> page = com.github.pagehelper.PageHelper.startPage(pageNum, pageSize)
+                .doSelectPage(() -> orderDAO.findByMerchantId(merchantId, status));
+        Paging<Order> paging = new Paging<>();
+        paging.setPageNum(pageNum);
+        paging.setPageSize(pageSize);
+        paging.setTotalPage(page.getPages());
+        paging.setTotalCount(page.getTotal());
+        List<Order> orders = new ArrayList<>();
+        for (OrderDO orderDO : page.getResult()) {
+            orders.add(orderDO.convertToModel());
+        }
+        paging.setData(fillExtraBatch(orders));
+        return paging;
+    }
+
+    @Override
+    public boolean shipMerchantOrder(Long merchantId, String orderNumber) {
+        assertMerchantOwnership(merchantId, orderNumber);
+        return shipOrder(orderNumber);
+    }
+
+    @Override
+    public boolean processMerchantRefund(Long merchantId, String orderNumber, boolean approve) {
+        assertMerchantOwnership(merchantId, orderNumber);
+        return processRefund(orderNumber, approve);
+    }
+
+    @Override
+    public Map<String, Object> merchantStats(Long merchantId) {
+        if (merchantId == null) {
+            throw new RuntimeException("商家信息缺失");
+        }
+        // 今日零点（本地时区）
+        Date today = Date.from(java.time.LocalDate.now().atStartOfDay()
+                .atZone(java.time.ZoneId.systemDefault()).toInstant());
+        // 已支付口径：已付款 / 已发货 / 已完成
+        String[] paidStatuses = {
+                OrderStatus.TRADE_PAID_SUCCESS.name(),
+                OrderStatus.TRADE_SHIPPED.name(),
+                OrderStatus.TRADE_COMPLETED.name()
+        };
+        BigDecimal paidRevenue = BigDecimal.ZERO;
+        BigDecimal todayRevenue = BigDecimal.ZERO;
+        for (String s : paidStatuses) {
+            paidRevenue = paidRevenue.add(orderDAO.sumTotalPriceByMerchantAndStatus(merchantId, s));
+            todayRevenue = todayRevenue.add(
+                    orderDAO.sumTotalPriceByMerchantAndStatusAndCreatedAfter(merchantId, s, today));
+        }
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("productCount", productService.queryMerchantPage(merchantId, null, null, 1, 1).getTotalCount());
+        stats.put("orderCount", orderDAO.countByMerchantId(merchantId));
+        stats.put("todayOrderCount", orderDAO.countByMerchantIdAndCreatedAfter(merchantId, today));
+        stats.put("paidRevenue", paidRevenue);
+        stats.put("todayRevenue", todayRevenue);
+        return stats;
+    }
+
+    /** 商家订单归属校验：订单必须属于该商家店铺 */
+    private void assertMerchantOwnership(Long merchantId, String orderNumber) {
+        if (merchantId == null) {
+            throw new RuntimeException("商家信息缺失");
+        }
+        if (StringUtils.isBlank(orderNumber)) {
+            throw new IllegalArgumentException("订单号不能为空");
+        }
+        OrderDO orderDO = orderDAO.findByOrderNumber(orderNumber);
+        if (orderDO == null) {
+            throw new RuntimeException("订单不存在");
+        }
+        if (!merchantId.equals(orderDO.getMerchantId())) {
+            throw new RuntimeException("无权操作其他店铺的订单");
+        }
+    }
+
+    /**
+     * 关闭待付款订单并回滚库存（事务内原子操作）。
+     * 仅当订单仍为 WAIT_BUYER_PAY 时生效，避免并发下把已支付订单误关闭。
+     *
+     * @param changeType 库存流水变动类型（取消 ORDER_RESTORE / 超时 EXPIRE_RESTORE）
+     */
+    private boolean closeAndRestoreStock(String orderNumber, String changeType) {
+        return transactionTemplate.execute(status -> {
+            OrderDO orderDO = orderDAO.findByOrderNumber(orderNumber);
+            if (orderDO == null) {
+                throw new RuntimeException("订单不存在");
+            }
+            if (!OrderStatus.WAIT_BUYER_PAY.name().equals(orderDO.getStatus())) {
+                throw new RuntimeException("订单状态异常，无法关闭");
+            }
+            // 原子更新：仅待付款 → 已关闭（防并发支付成功）
+            int updated = orderDAO.updateStatusIfWaitPay(orderNumber, OrderStatus.TRADE_CLOSED.name());
+            if (updated <= 0) {
+                throw new RuntimeException("订单状态已变化，请刷新后重试");
+            }
+            // 回滚库存
+            int quantity = orderDO.getQuantity() != null && orderDO.getQuantity() > 0 ? orderDO.getQuantity() : 1;
+            String detailId = orderDO.getProductDetailId();
+            ProductDetail detail = productDetailService.findById(detailId);
+            int beforeStock = detail == null ? 0 : detail.getStock();
+            productDetailService.increaseStock(detailId, quantity);
+            // 库存流水留痕（与回滚同事务）
+            stockLogService.record(detailId, detail != null ? detail.getProductId() : null, orderNumber,
+                    changeType, quantity, beforeStock, beforeStock + quantity);
+            // 取消订单：释放被核销的优惠券（归属/已用由 CAS 守卫保障）
+            if (StringUtils.isNotBlank(orderDO.getCouponId())) {
+                couponService.releaseCoupon(orderDO.getCouponId());
+            }
+            // 秒杀订单回滚：仅当 seckill_order 为 CREATED 时恢复活动库存并置 CANCELLED
+            seckillService.rollbackIfUnpaid(orderNumber);
+            return true;
+        });
     }
 
     @Override
@@ -93,11 +478,7 @@ public class OrderServiceImpl implements OrderService {
             return null;
         }
         Order order = orderDO.convertToModel();
-        // 填充商品详情
-        if (order.getProductDetailId() != null) {
-            ProductDetail productDetail = productDetailService.findById(order.getProductDetailId());
-            order.setProductDetail(productDetail);
-        }
+        fillExtra(order);
         return order;
     }
 
@@ -106,19 +487,58 @@ public class OrderServiceImpl implements OrderService {
         List<OrderDO> orderDOs = orderDAO.findByUserIdAndStatus(userId, status);
         List<Order> orders = new ArrayList<>();
         for (OrderDO orderDO : orderDOs) {
-            Order order = orderDO.convertToModel();
-            if (order.getProductDetailId() != null) {
-                ProductDetail productDetail = productDetailService.findById(order.getProductDetailId());
-                order.setProductDetail(productDetail);
-            }
-            orders.add(order);
+            orders.add(orderDO.convertToModel());
         }
-        return orders;
+        return fillExtraBatch(orders);
+    }
+
+    @Override
+    public Paging<Order> findPageByUserIdAndStatus(Long userId, String status, Integer pageNum, Integer pageSize) {
+        if (pageNum == null || pageNum < 1) {
+            pageNum = 1;
+        }
+        if (pageSize == null || pageSize < 1 || pageSize > 50) {
+            pageSize = 10;
+        }
+        com.github.pagehelper.Page<OrderDO> page = com.github.pagehelper.PageHelper.startPage(pageNum, pageSize)
+                .doSelectPage(() -> orderDAO.findByUserIdAndStatus(userId, status));
+
+        Paging<Order> paging = new Paging<>();
+        paging.setPageNum(pageNum);
+        paging.setPageSize(pageSize);
+        paging.setTotalPage(page.getPages());
+        paging.setTotalCount(page.getTotal());
+
+        List<Order> orders = new ArrayList<>();
+        for (OrderDO orderDO : page.getResult()) {
+            orders.add(orderDO.convertToModel());
+        }
+        paging.setData(fillExtraBatch(orders));
+        return paging;
     }
 
     @Override
     public boolean updateOrderStatus(String orderNumber, String status) {
+        if (StringUtils.isBlank(orderNumber)) {
+            throw new IllegalArgumentException("订单号不能为空");
+        }
+        if (!OrderStatus.isValid(status)) {
+            throw new IllegalArgumentException("订单状态不合法：" + status);
+        }
         return orderDAO.updateStatus(orderNumber, status) > 0;
+    }
+
+    @Override
+    public boolean updateStatusIfWaitPay(String orderNumber, String targetStatus) {
+        return orderDAO.updateStatusIfWaitPay(orderNumber, targetStatus) > 0;
+    }
+
+    @Override
+    public java.util.List<java.util.Map<String, Object>> dailySalesReport(int days) {
+        if (days < 1 || days > 90) {
+            days = 7;
+        }
+        return orderDAO.dailySalesReport(days, OrderStatus.TRADE_PAID_SUCCESS.name());
     }
 
     @Override
@@ -126,14 +546,148 @@ public class OrderServiceImpl implements OrderService {
         List<OrderDO> orderDOs = orderDAO.findAll();
         List<Order> orders = new ArrayList<>();
         for (OrderDO orderDO : orderDOs) {
+            orders.add(orderDO.convertToModel());
+        }
+        return fillExtraBatch(orders);
+    }
+
+    @Override
+    public long countAll() {
+        return orderDAO.countAll();
+    }
+
+    @Override
+    public BigDecimal sumTotalPriceByStatus(String status) {
+        return orderDAO.sumTotalPriceByStatus(status);
+    }
+
+    @Override
+    public List<Order> findExpiredWaitPay(int expireMinutes) {
+        Date expireTime = new Date(System.currentTimeMillis() - expireMinutes * 60L * 1000L);
+        List<OrderDO> orderDOs = orderDAO.findExpiredWaitPay(expireTime);
+        List<Order> orders = new ArrayList<>();
+        for (OrderDO orderDO : orderDOs) {
             Order order = orderDO.convertToModel();
-            if (order.getProductDetailId() != null) {
-                ProductDetail productDetail = productDetailService.findById(order.getProductDetailId());
-                order.setProductDetail(productDetail);
-            }
+            // 仅需 productDetailId + quantity 用于回滚，无需填充冗余信息
             orders.add(order);
         }
         return orders;
+    }
+
+    /**
+     * 批量组装订单展示信息（消除 N+1）：
+     * 一次性查询规格（IN）、商品（IN）、用户（IN）后按 ID 映射填充。
+     */
+    private List<Order> fillExtraBatch(List<Order> orders) {
+        if (orders == null || orders.isEmpty()) {
+            return orders;
+        }
+        // 1) 批量查规格
+        Set<String> detailIds = new LinkedHashSet<>();
+        for (Order order : orders) {
+            if (StringUtils.isNotBlank(order.getProductDetailId())) {
+                detailIds.add(order.getProductDetailId());
+            }
+        }
+        Map<String, ProductDetail> detailMap = new HashMap<>();
+        if (!detailIds.isEmpty()) {
+            for (ProductDetail pd : productDetailService.findByIds(new ArrayList<>(detailIds))) {
+                detailMap.put(pd.getId(), pd);
+            }
+        }
+        // 2) 批量查商品
+        Set<String> productIds = new LinkedHashSet<>();
+        for (ProductDetail pd : detailMap.values()) {
+            if (pd != null && StringUtils.isNotBlank(pd.getProductId())) {
+                productIds.add(pd.getProductId());
+            }
+        }
+        Map<String, Product> productMap = new HashMap<>();
+        if (!productIds.isEmpty()) {
+            for (Product p : productService.findByIds(new ArrayList<>(productIds))) {
+                productMap.put(p.getId(), p);
+            }
+        }
+        // 3) 批量查用户
+        Set<Long> userIds = new LinkedHashSet<>();
+        for (Order order : orders) {
+            if (order.getUserId() != null) {
+                userIds.add(order.getUserId());
+            }
+        }
+        Map<Long, User> userMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            for (User u : userService.findByIds(new ArrayList<>(userIds))) {
+                u.setPwd(null);
+                userMap.put(u.getId(), u);
+            }
+        }
+        // 4) 批量查已评价订单号（一次 IN）
+        List<String> orderNumbers = new ArrayList<>();
+        for (Order order : orders) {
+            if (StringUtils.isNotBlank(order.getOrderNumber())) {
+                orderNumbers.add(order.getOrderNumber());
+            }
+        }
+        Set<String> commentedSet = new LinkedHashSet<>();
+        if (!orderNumbers.isEmpty()) {
+            commentedSet.addAll(commentDAO.findCommentedOrderNumbers(orderNumbers));
+        }
+        // 5) 组装
+        for (Order order : orders) {
+            ProductDetail pd = detailMap.get(order.getProductDetailId());
+            order.setProductDetail(pd);
+            if (pd != null) {
+                Product product = productMap.get(pd.getProductId());
+                if (product != null) {
+                    order.setProductName(product.getName());
+                    order.setProductImg(firstImg(product.getProductImgs()));
+                }
+            }
+            order.setUser(userMap.get(order.getUserId()));
+            order.setCommented(commentedSet.contains(order.getOrderNumber()));
+        }
+        return orders;
+    }
+
+    /**
+     * 组装订单展示冗余信息：商品详情、商品名、商品首图、下单用户。
+     * 均非落库字段，仅用于前端列表/详情直接展示。
+     */
+    private void fillExtra(Order order) {
+        if (StringUtils.isNotBlank(order.getProductDetailId())) {
+            ProductDetail productDetail = productDetailService.findById(order.getProductDetailId());
+            order.setProductDetail(productDetail);
+            if (productDetail != null && StringUtils.isNotBlank(productDetail.getProductId())) {
+                Product product = productService.findById(productDetail.getProductId());
+                if (product != null) {
+                    order.setProductName(product.getName());
+                    order.setProductImg(firstImg(product.getProductImgs()));
+                }
+            }
+        }
+        if (order.getUserId() != null) {
+            User user = userService.findById(order.getUserId());
+            if (user != null) {
+                user.setPwd(null);
+                order.setUser(user);
+            }
+        }
+        order.setCommented(StringUtils.isNotBlank(order.getOrderNumber())
+                && commentDAO.countByOrderNumber(order.getOrderNumber()) > 0);
+    }
+
+    /** 取图片串（空格或分号分隔）中的第一张图 */
+    private String firstImg(String productImgs) {
+        if (StringUtils.isBlank(productImgs)) {
+            return null;
+        }
+        for (String part : productImgs.split("[;\\s]+")) {
+            if (StringUtils.isNotBlank(part)) {
+                return part.trim();
+            }
+        }
+        return null;
     }
 
     private String generateOrderNumber() {

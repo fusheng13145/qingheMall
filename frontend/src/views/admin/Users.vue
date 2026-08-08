@@ -25,7 +25,7 @@
                   {{ user.role === 'ADMIN' ? '管理员' : '普通用户' }}
                 </span>
               </td>
-              <td class="time">{{ user.gmtCreated }}</td>
+              <td class="time">{{ formatTime(user.gmtCreated) }}</td>
               <td class="actions">
                 <button
                   v-if="user.role === 'USER'"
@@ -66,12 +66,23 @@ onMounted(async () => {
 async function loadUsers() {
   try {
     const res = await getUserList()
-    if (res.data.code === 200) {
-      users.value = res.data.data || []
-    }
+    users.value = res.data || []
   } catch (e) {
-    // ignore
+    alert('加载用户列表失败：' + (e.message || '请稍后重试'))
   }
+}
+
+function formatTime(time) {
+  if (!time) return ''
+  // 兼容 LocalDateTime 的 ISO 格式（2026-08-06T15:00:00）与 Date 格式
+  const d = new Date(time)
+  if (isNaN(d.getTime())) return String(time).replace('T', ' ')
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}`
 }
 
 async function handleRoleChange(user, newRole) {
@@ -81,7 +92,7 @@ async function handleRoleChange(user, newRole) {
     await updateUserRole(user.id, newRole)
     user.role = newRole
   } catch (e) {
-    // ignore
+    alert('角色修改失败：' + (e.message || '请稍后重试'))
   }
 }
 </script>

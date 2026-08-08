@@ -11,31 +11,18 @@ export const useUserStore = defineStore('user', () => {
 
   const isAdmin = computed(() => role.value === 'ADMIN')
 
-  async function login(userNameVal, pwd) {
-    try {
-      const res = await loginApi(userNameVal, pwd)
-      if (res.data.code === 200) {
-        const data = res.data.data
-        userId.value = data.userId
-        userName.value = data.userName
-        nickName.value = data.nickName || data.userName
-        role.value = data.role || ''
-        isLoggedIn.value = true
-        return { success: true }
-      } else {
-        return { success: false, message: res.data.msg || '登录失败' }
-      }
-    } catch (error) {
-      return { success: false, message: error.response?.data?.msg || '网络错误，请稍后重试' }
-    }
+  // 商家身份（M6）：登录角色为 MERCHANT 即可进入商家工作台（经营权限以后端 ACTIVE 校验为准）
+  const isMerchant = computed(() => role.value === 'MERCHANT')
+
+  function applyUser(data) {
+    userId.value = data.id
+    userName.value = data.userName
+    nickName.value = data.nickName || data.userName
+    role.value = data.role || ''
+    isLoggedIn.value = true
   }
 
-  async function logout() {
-    try {
-      await logoutApi()
-    } catch (e) {
-      // ignore
-    }
+  function clearUser() {
     userId.value = null
     userName.value = ''
     nickName.value = ''
@@ -43,29 +30,35 @@ export const useUserStore = defineStore('user', () => {
     isLoggedIn.value = false
   }
 
+  async function login(userNameVal, pwd) {
+    try {
+      const res = await loginApi(userNameVal, pwd)
+      applyUser(res.data)
+      return { success: true }
+    } catch (error) {
+      return { success: false, message: error.message || '网络错误，请稍后重试' }
+    }
+  }
+
+  async function logout() {
+    try {
+      await logoutApi()
+    } catch (e) {
+      // 登出失败不阻塞本地清理
+    }
+    clearUser()
+  }
+
   async function checkLogin() {
     try {
       const res = await checkLoginApi()
-      if (res.data.code === 200 && res.data.data) {
-        const data = res.data.data
-        userId.value = data.userId
-        userName.value = data.userName
-        nickName.value = data.nickName || data.userName
-        role.value = data.role || ''
-        isLoggedIn.value = true
+      if (res.data) {
+        applyUser(res.data)
       } else {
-        userId.value = null
-        userName.value = ''
-        nickName.value = ''
-        role.value = ''
-        isLoggedIn.value = false
+        clearUser()
       }
     } catch (error) {
-      userId.value = null
-      userName.value = ''
-      nickName.value = ''
-      role.value = ''
-      isLoggedIn.value = false
+      clearUser()
     }
   }
 
@@ -76,6 +69,7 @@ export const useUserStore = defineStore('user', () => {
     isLoggedIn,
     role,
     isAdmin,
+    isMerchant,
     login,
     logout,
     checkLogin

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.MerchantDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.MerchantDO">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="user_id" property="userId" jdbcType="BIGINT"/>
+        <result column="shop_name" property="shopName" jdbcType="VARCHAR"/>
+        <result column="shop_logo" property="shopLogo" jdbcType="VARCHAR"/>
+        <result column="shop_desc" property="shopDesc" jdbcType="VARCHAR"/>
+        <result column="status" property="status" jdbcType="VARCHAR"/>
+        <result column="reject_reason" property="rejectReason" jdbcType="VARCHAR"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+        <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
+        <result column="user_name" property="userName" jdbcType="VARCHAR"/>
+        <result column="nick_name" property="nickName" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        m.id, m.user_id, m.shop_name, m.shop_logo, m.shop_desc, m.status, m.reject_reason,
+        m.gmt_created, m.gmt_modified, u.user_name AS user_name, u.nick_name AS nick_name
+    </sql>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.MerchantDO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO merchant (user_id, shop_name, shop_logo, shop_desc, status, reject_reason, gmt_created, gmt_modified)
+        VALUES (#{userId}, #{shopName}, #{shopLogo}, #{shopDesc}, #{status}, #{rejectReason}, #{gmtCreated}, #{gmtModified})
+    </insert>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM merchant m
+        LEFT JOIN `user` u ON m.user_id = u.id
+        WHERE m.id = #{id}
+    </select>
+
+    <select id="findByUserId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM merchant m
+        LEFT JOIN `user` u ON m.user_id = u.id
+        WHERE m.user_id = #{userId}
+    </select>
+
+    <select id="query" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM merchant m
+        LEFT JOIN `user` u ON m.user_id = u.id
+        <where>
+            <if test="status != null and status != ''">
+                m.status = #{status}
+            </if>
+        </where>
+        ORDER BY m.gmt_created DESC
+    </select>
+
+    <update id="updateStatus">
+        UPDATE merchant
+        SET status = #{status}, reject_reason = #{rejectReason}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteByIdForTest">
+        DELETE FROM merchant WHERE id = #{id}
+    </delete>
+
+</mapper>

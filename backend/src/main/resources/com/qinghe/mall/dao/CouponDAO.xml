@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.CouponDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.CouponDO">
+        <id column="id" property="id" jdbcType="VARCHAR"/>
+        <result column="name" property="name" jdbcType="VARCHAR"/>
+        <result column="type" property="type" jdbcType="VARCHAR"/>
+        <result column="threshold" property="threshold" jdbcType="DECIMAL"/>
+        <result column="amount" property="amount" jdbcType="DECIMAL"/>
+        <result column="discount" property="discount" jdbcType="DECIMAL"/>
+        <result column="max_discount" property="maxDiscount" jdbcType="DECIMAL"/>
+        <result column="total" property="total" jdbcType="INTEGER"/>
+        <result column="issued" property="issued" jdbcType="INTEGER"/>
+        <result column="per_limit" property="perLimit" jdbcType="INTEGER"/>
+        <result column="start_time" property="startTime" jdbcType="TIMESTAMP"/>
+        <result column="end_time" property="endTime" jdbcType="TIMESTAMP"/>
+        <result column="status" property="status" jdbcType="VARCHAR"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+        <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, name, type, threshold, amount, discount, max_discount, total, issued,
+        per_limit, start_time, end_time, status, gmt_created, gmt_modified
+    </sql>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.CouponDO">
+        INSERT INTO `coupon` (id, name, type, threshold, amount, discount, max_discount, total,
+                              issued, per_limit, start_time, end_time, status, gmt_created, gmt_modified)
+        VALUES (#{id}, #{name}, #{type}, #{threshold}, #{amount}, #{discount}, #{maxDiscount}, #{total},
+                #{issued}, #{perLimit}, #{startTime}, #{endTime}, #{status}, #{gmtCreated}, #{gmtModified})
+    </insert>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `coupon`
+        WHERE id = #{id}
+    </select>
+
+    <select id="findAll" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `coupon`
+        ORDER BY gmt_created DESC
+    </select>
+
+    <select id="findActive" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `coupon`
+        WHERE status = 'ACTIVE'
+          AND start_time &lt;= NOW() AND end_time &gt;= NOW()
+        ORDER BY gmt_created DESC
+    </select>
+
+    <select id="findPage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `coupon`
+        ORDER BY gmt_created DESC
+    </select>
+
+    <update id="incrementIssued">
+        UPDATE `coupon`
+        SET issued = issued + 1, gmt_modified = NOW()
+        WHERE id = #{id} AND issued &lt; total
+    </update>
+
+    <update id="update" parameterType="com.qinghe.mall.dataobject.CouponDO">
+        UPDATE `coupon`
+        SET name = #{name}, threshold = #{threshold}, amount = #{amount}, discount = #{discount},
+            max_discount = #{maxDiscount}, total = #{total}, per_limit = #{perLimit},
+            start_time = #{startTime}, end_time = #{endTime}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE `coupon`
+        SET status = #{status}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
+</mapper>

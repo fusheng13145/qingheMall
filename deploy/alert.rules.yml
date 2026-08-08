@@ -1,0 +1,65 @@
+# ============================================================
+# 青禾商城 Prometheus 告警规则（RR-8 监控告警）
+# 由 deploy/prometheus.yml 的 rule_files 挂载加载
+# 指标来源：Spring Boot Actuator + Micrometer（/actuator/prometheus）
+# 说明：规则在 Prometheus 内持续求值并进入 firing 状态；
+#       如需"通知到人"，再接入 Alertmanager 或 Grafana 统一告警（见下方注释）。
+# ============================================================
+groups:
+  - name: qinghe-mall-backend
+    rules:
+      # 后端实例不可用：连续 1 分钟抓取失败
+      - alert: BackendDown
+        expr: up{job="qinghe-mall-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "青禾商城后端服务不可用"
+          description: "Prometheus 无法抓取 backend:8080/actuator/prometheus 已超过 1 分钟，请检查后端容器/端口/健康状态。"
+
+      # HTTP 5xx 错误率过高：近 5 分钟 > 5%
+      - alert: HighHttpErrorRate
+        expr: |
+          sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+            / sum(rate(http_server_requests_seconds_count[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP 5xx 错误率过高"
+          description: "近 5 分钟 5xx 错误率 {{ $value | humanizePercentage }} 超过 5% 阈值，请排查后端异常日志（含 traceId）。"
+
+      # HTTP P95 延迟过高：近 5 分钟 > 1 秒
+      - alert: HighHttpLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_server_requests_seconds_bucket[5m])) by (le)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP P95 延迟过高"
+          description: "近 5 分钟接口 P95 延迟 {{ $value | humanizeDuration }} 超过 1 秒，可能存在慢查询或资源瓶颈。"
+
+      # JVM 堆内存使用率过高：> 85%（按 old gen 估算，兜底用整体 heap）
+      - alert: JvmHeapUsageHigh
+        expr: |
+          jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JVM 堆内存使用率过高"
+          description: "堆内存使用率 {{ $value | humanizePercentage }} 超过 85%，持续 10 分钟，关注是否存在内存泄漏或需要扩容。"
+
+# ------------------------------------------------------------
+# 通知接入（可选，按需启用）：
+# 1) Alertmanager：在 docker-compose 增加 alertmanager 服务，
+#    并在 prometheus.yml 增加 alerting.alertmanagers 指向它；
+# 2) 或 Grafana 统一告警（Grafana 10 内置）：在
+#    deploy/grafana/provisioning/alerting/ 下配置 contact_points + rules，
+#    可直接将上面这些 Prometheus 指标作为 Grafana 告警数据源推送到
+#    邮件 / 钉钉 / Webhook 等渠道。
+# ------------------------------------------------------------
