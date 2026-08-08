@@ -1,11 +1,4 @@
 node_modules/
 dist/
-dist-ali/
-dist-pay/
-dist_old_*/
-dist_bak/
 .DS_Store
 *.local
-
-# 构建残留（若仍存在，可在资源管理器中手动删除）
-_dist_trash_platform/

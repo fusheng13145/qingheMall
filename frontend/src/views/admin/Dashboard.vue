@@ -62,7 +62,7 @@
           >近{{ d }}天</button>
         </div>
       </div>
-      <div class="report-body" v-if="report.length > 0">
+      <div v-if="report.length > 0" class="report-body">
         <div class="bar-chart">
           <div v-for="item in report" :key="item.day" class="bar-col" :title="`${item.day} 销售额 ¥${Number(item.salesAmount || 0).toFixed(2)}`">
             <div class="bar-track">
@@ -88,7 +88,7 @@
           </tbody>
         </table>
       </div>
-      <div class="report-empty" v-else>近 {{ reportDays }} 天暂无已支付订单数据</div>
+      <div v-else class="report-empty">近 {{ reportDays }} 天暂无已支付订单数据</div>
     </div>
 
     <div class="recent-section">

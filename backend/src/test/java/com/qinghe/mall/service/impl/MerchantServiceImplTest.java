@@ -174,6 +174,12 @@ class MerchantServiceImplTest {
     void audit_approve_shouldActivateAndPromoteRole() {
         MerchantDO m = mockMerchant(100L, 5L, MerchantDO.STATUS_PENDING);
         when(merchantDAO.findById(100L)).thenReturn(m);
+        // 模拟 updateStatus 的数据库语义：执行后 findById 返回更新后的状态
+        when(merchantDAO.updateStatus(anyLong(), anyString(), any()))
+                .thenAnswer(inv -> {
+                    m.setStatus((String) inv.getArgument(1));
+                    return 1;
+                });
 
         MerchantDO result = merchantService.audit(100L, true, null);
 
@@ -198,6 +204,12 @@ class MerchantServiceImplTest {
     void audit_reject_withReason_shouldReject() {
         MerchantDO m = mockMerchant(100L, 5L, MerchantDO.STATUS_PENDING);
         when(merchantDAO.findById(100L)).thenReturn(m);
+        // 模拟 updateStatus 的数据库语义：执行后 findById 返回更新后的状态
+        when(merchantDAO.updateStatus(anyLong(), anyString(), any()))
+                .thenAnswer(inv -> {
+                    m.setStatus((String) inv.getArgument(1));
+                    return 1;
+                });
 
         MerchantDO result = merchantService.audit(100L, false, "资质不全");
 

@@ -5,7 +5,8 @@
 FROM node:18-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+# npm ci 依据 package-lock.json 精确安装，保证镜像构建与本地/CI 依赖一致
+RUN npm ci
 COPY . .
 RUN npm run build
 

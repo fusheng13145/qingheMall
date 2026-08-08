@@ -32,7 +32,7 @@
             <td>
               <div class="cell-product">
                 <img v-if="firstImg(p.productImgs)" :src="firstImg(p.productImgs)" class="thumb" alt="" />
-                <div class="thumb thumb-empty" v-else></div>
+                <div v-else class="thumb thumb-empty"></div>
                 <span class="p-name">{{ p.name }}</span>
               </div>
             </td>

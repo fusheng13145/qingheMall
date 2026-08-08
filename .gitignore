@@ -11,8 +11,9 @@
 # ============ WorkBuddy 工作区数据 ============
 .workbuddy/
 
-# ============ 后端构建产物 ============
+# ============ 后端构建产物与运行时目录 ============
 backend/target/
+backend/upload/
 *.class
 *.jar
 *.war

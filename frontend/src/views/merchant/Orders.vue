@@ -29,7 +29,7 @@
             <td>
               <div class="cell-product">
                 <img v-if="o.productImg" :src="o.productImg" class="thumb" alt="" />
-                <div class="thumb thumb-empty" v-else></div>
+                <div v-else class="thumb thumb-empty"></div>
                 <div>
                   <div class="p-name">{{ o.productName }}</div>
                   <div class="p-qty">x{{ o.quantity }} · {{ o.productDetail ? '规格' + o.productDetail.size : '' }}</div>

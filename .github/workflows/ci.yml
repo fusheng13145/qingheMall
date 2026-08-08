@@ -52,6 +52,10 @@ jobs:
 
       - name: Run tests
         working-directory: backend
+        env:
+          # 测试连库口令必须与上方 mysql 服务一致（root123）；
+          # 其余连接默认值（localhost:3306 / qinghedb / root / localhost:6379）与 dev profile 默认一致
+          DB_PASSWORD: root123
         run: mvn -B test
 
       - name: Package
