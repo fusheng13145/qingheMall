@@ -51,6 +51,11 @@
         ORDER BY uc.gmt_created DESC
     </select>
 
+    <!-- P2：perLimit 限领校验（用户已领某券数量） -->
+    <select id="countByUserAndCoupon" resultType="int">
+        SELECT COUNT(*) FROM `user_coupon` WHERE user_id = #{userId} AND coupon_id = #{couponId}
+    </select>
+
     <select id="findUsable" resultMap="BaseResultMap">
         SELECT <include refid="Base_Column_List"/>
         FROM `user_coupon` uc

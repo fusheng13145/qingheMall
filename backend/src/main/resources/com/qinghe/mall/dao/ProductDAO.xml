@@ -20,11 +20,20 @@
         id, name, brand, merchant_id, status, price, purchase_num, product_intro, product_imgs, gmt_created, gmt_modified
     </sql>
 
-    <!-- 动态条件：名称关键词 LIKE / 品牌筛选 / 排序 -->
+    <!-- 动态条件：名称/介绍全文搜索（P1-20 FULLTEXT 优先，单字降级 LIKE）/ 品牌筛选 / 排序 -->
     <sql id="Search_Condition">
         <where>
             <if test="keyword != null and keyword != ''">
-                AND name LIKE CONCAT('%', #{keyword}, '%')
+                <choose>
+                    <!-- ≥2 字走 ngram FULLTEXT（NATURAL LANGUAGE 模式，无操作符注入风险），消除全表扫描 -->
+                    <when test="keyword.length() >= 2">
+                        AND MATCH(name, product_intro) AGAINST(#{keyword} IN NATURAL LANGUAGE MODE)
+                    </when>
+                    <!-- 单字 ngram 无法分词匹配，降级 LIKE（低频，代价可接受） -->
+                    <otherwise>
+                        AND name LIKE CONCAT('%', #{keyword}, '%')
+                    </otherwise>
+                </choose>
             </if>
             <if test="brand != null and brand != ''">
                 AND brand = #{brand}
@@ -67,13 +76,20 @@
         SELECT DISTINCT brand FROM product WHERE brand IS NOT NULL AND brand != '' ORDER BY brand
     </select>
 
-    <!-- 商家店铺商品（M6：归属过滤 + 关键词 + 状态） -->
+    <!-- 商家店铺商品（M6：归属过滤 + 关键词 + 状态；P1-20 全文搜索） -->
     <select id="queryByMerchantId" resultMap="BaseResultMap">
         SELECT <include refid="Base_Column_List"/>
         FROM product
         WHERE merchant_id = #{merchantId}
         <if test="keyword != null and keyword != ''">
-            AND name LIKE CONCAT('%', #{keyword}, '%')
+            <choose>
+                <when test="keyword.length() >= 2">
+                    AND MATCH(name, product_intro) AGAINST(#{keyword} IN NATURAL LANGUAGE MODE)
+                </when>
+                <otherwise>
+                    AND name LIKE CONCAT('%', #{keyword}, '%')
+                </otherwise>
+            </choose>
         </if>
         <if test="status != null and status != ''">
             AND status = #{status}

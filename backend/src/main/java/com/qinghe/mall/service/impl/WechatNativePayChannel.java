@@ -1,7 +1,7 @@
 package com.qinghe.mall.service.impl;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
 import com.qinghe.mall.config.WechatPayProperties;
 import com.qinghe.mall.model.ChannelPayResult;
 import com.qinghe.mall.model.Order;
@@ -112,6 +112,16 @@ public class WechatNativePayChannel implements PayChannel {
                                   String signatureHeader, String body) {
         if (StringUtils.isAnyBlank(timestampHeader, nonceHeader, signatureHeader, body)) {
             throw new IllegalArgumentException("微信回调参数不完整");
+        }
+        // P2（补漏）：回调时间戳新鲜度校验（±5 分钟），防历史合法回调重放
+        long ts;
+        try {
+            ts = Long.parseLong(timestampHeader);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("微信回调时间戳非法");
+        }
+        if (Math.abs(System.currentTimeMillis() / 1000 - ts) > 300) {
+            throw new IllegalArgumentException("微信回调时间戳超时");
         }
         // 配置了平台证书则验签（更安全）；未配置时无法验证回调来源真实性，
         // 按 fail-closed 直接拒绝，避免伪造回调在未验签情况下篡改订单状态

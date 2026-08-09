@@ -8,7 +8,7 @@
         :key="f.value"
         class="filter-btn"
         :class="{ active: currentFilter === f.value }"
-        @click="currentFilter = f.value"
+        @click="switchFilter(f.value)"
       >
         {{ f.label }}
       </button>
@@ -70,6 +70,11 @@
           </tbody>
         </table>
       </div>
+      <div v-if="totalPage > 1" class="pagination-bar">
+        <button class="page-btn" :disabled="pagination <= 1" @click="goPrev">上一页</button>
+        <span class="page-info">第 {{ pagination }} / {{ totalPage }} 页（共 {{ totalCount }} 条）</span>
+        <button class="page-btn" :disabled="pagination >= totalPage" @click="goNext">下一页</button>
+      </div>
     </div>
   </div>
 </template>
@@ -80,6 +85,11 @@ import { getOrderList, updateOrderStatus, shipOrder, processRefund } from '../..
 
 const orders = ref([])
 const currentFilter = ref('ALL')
+// P1-11：服务端分页状态
+const pagination = ref(1)
+const pageSize = ref(20)
+const totalCount = ref(0)
+const totalPage = ref(1)
 
 const filters = [
   { label: '全部', value: 'ALL' },
@@ -93,10 +103,8 @@ const filters = [
   { label: '支付失败', value: 'TRADE_PAID_FAILED' }
 ]
 
-const filteredOrders = computed(() => {
-  if (currentFilter.value === 'ALL') return orders.value
-  return orders.value.filter(o => o.status === currentFilter.value)
-})
+// 服务端已按状态过滤，前端仅透出当页数据（保留原计算属性名以兼容模板）
+const filteredOrders = computed(() => orders.value)
 
 onMounted(async () => {
   await loadOrders()
@@ -104,11 +112,35 @@ onMounted(async () => {
 
 async function loadOrders() {
   try {
-    const res = await getOrderList()
-    orders.value = res.data || []
+    const status = currentFilter.value === 'ALL' ? '' : currentFilter.value
+    const res = await getOrderList(pagination.value, pageSize.value, status)
+    const paging = res.data || {}
+    orders.value = paging.data || []
+    totalCount.value = paging.totalCount || 0
+    totalPage.value = paging.totalPage || 1
   } catch (e) {
     alert('加载订单列表失败：' + (e.message || '请稍后重试'))
   }
+}
+
+// 状态筛选切换：重置到第一页并服务端重新加载
+async function switchFilter(value) {
+  if (currentFilter.value === value) return
+  currentFilter.value = value
+  pagination.value = 1
+  await loadOrders()
+}
+
+async function goPrev() {
+  if (pagination.value <= 1) return
+  pagination.value--
+  await loadOrders()
+}
+
+async function goNext() {
+  if (pagination.value >= totalPage.value) return
+  pagination.value++
+  await loadOrders()
 }
 
 function getStatusText(status) {
@@ -390,5 +422,30 @@ async function handleRefund(order, approve) {
   text-align: center;
   color: var(--color-text-tertiary);
   padding: 40px 24px !important;
+}
+
+/* P1-11：分页控件 */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 4px 0;
+}
+.page-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.page-info {
+  font-size: 13px;
+  color: var(--color-text-secondary);
 }
 </style>

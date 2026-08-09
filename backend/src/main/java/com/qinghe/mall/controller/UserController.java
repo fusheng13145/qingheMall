@@ -6,6 +6,7 @@ import com.qinghe.mall.model.Result;
 import com.qinghe.mall.model.User;
 import com.qinghe.mall.service.MerchantService;
 import com.qinghe.mall.service.UserService;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -13,8 +14,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpSession;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 
 @RestController
 @RequestMapping("/api/user")
@@ -52,10 +53,14 @@ public class UserController {
     public Result<User> login(@RequestParam("userName") String userName, @RequestParam("pwd") String pwd,
                               HttpServletRequest request) {
         User user = userService.login(userName, pwd);
-        request.getSession().setAttribute("userId", user.getId());
-        request.getSession().setAttribute("userName", user.getUserName());
-        request.getSession().setAttribute("nickName", user.getNickName());
-        request.getSession().setAttribute("role", user.getRole());
+        // P1-14：登录成功后更换会话 ID，防止会话固定攻击（攻击者预置会话被利用）。
+        // Boot 3（Servlet 6）下 changeSessionId 要求会话已存在：先 getSession(true) 创建再换 ID
+        jakarta.servlet.http.HttpSession session = request.getSession(true);
+        request.changeSessionId();
+        session.setAttribute("userId", user.getId());
+        session.setAttribute("userName", user.getUserName());
+        session.setAttribute("nickName", user.getNickName());
+        session.setAttribute("role", user.getRole());
         // 不返回密码
         user.setPwd(null);
         return Result.success(user);
@@ -80,6 +85,14 @@ public class UserController {
         Object userIdObj = request.getSession().getAttribute("userId");
         if (userIdObj == null) {
             return Result.fail(401, "未登录");
+        }
+        // P2：头像 URL 协议白名单——仅允许站内相对路径或 http(s) 外链，拒绝 data:/javascript: 等
+        if (StringUtils.isNotBlank(avatar)
+                && !avatar.startsWith("/uploads/")
+                && !avatar.startsWith("/api/")
+                && !avatar.startsWith("https://")
+                && !avatar.startsWith("http://")) {
+            return Result.fail(400, "头像地址不合法");
         }
         User user = userService.updateProfile((Long) userIdObj, nickName, avatar);
         // 同步 Session 中的昵称

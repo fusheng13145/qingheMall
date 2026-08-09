@@ -13,23 +13,23 @@ import org.springframework.context.annotation.Configuration;
 /**
  * Redisson 显式配置。
  *
- * 背景：redisson-spring-boot-starter 3.17.0 的自动配置在 spring.redis.password 为空字符串时
+ * 背景：redisson-spring-boot-starter 的自动配置在 redis 密码为空字符串时
  * 仍会执行 AUTH 命令，导致「本地 Redis 未设置密码」的场景连接失败（ERR Client sent AUTH...）。
- * 本配置自行读取 spring.redis.* 构建 RedissonClient，密码为空时跳过 AUTH。
+ * 本配置自行读取 spring.data.redis.*（Boot 3 命名空间）构建 RedissonClient，密码为空时跳过 AUTH。
  */
 @Configuration
 public class RedissonConfig {
 
-    @Value("${spring.redis.host:localhost}")
+    @Value("${spring.data.redis.host:localhost}")
     private String host;
 
-    @Value("${spring.redis.port:6379}")
+    @Value("${spring.data.redis.port:6379}")
     private int port;
 
-    @Value("${spring.redis.password:}")
+    @Value("${spring.data.redis.password:}")
     private String password;
 
-    @Value("${spring.redis.timeout:5000ms}")
+    @Value("${spring.data.redis.timeout:5000ms}")
     private Duration timeout;
 
     @Bean(destroyMethod = "shutdown")

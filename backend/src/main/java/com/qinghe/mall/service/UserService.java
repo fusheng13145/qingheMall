@@ -16,6 +16,9 @@ public interface UserService {
 
     List<User> findAll();
 
+    /** P1-11：管理端用户分页查询（消除全表捞取） */
+    com.qinghe.mall.model.Paging<User> findAdminPage(Integer pagination, Integer pageSize);
+
     User findById(Long id);
 
     /** 批量查询用户（订单列表消除 N+1） */

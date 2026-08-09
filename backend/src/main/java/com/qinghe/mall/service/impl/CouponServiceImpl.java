@@ -14,6 +14,7 @@ import java.util.Date;
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -126,6 +127,13 @@ public class CouponServiceImpl implements CouponService {
         if (coupon.getTotal() != null && coupon.getIssued() != null && coupon.getIssued() >= coupon.getTotal()) {
             throw new RuntimeException("券已领完");
         }
+        // P2：每人限领数量（perLimit > 1 时按已领数拦截；uk_user_coupon 唯一约束仍是 1 张底线）
+        if (coupon.getPerLimit() != null && coupon.getPerLimit() > 1) {
+            int claimed = userCouponDAO.countByUserAndCoupon(userId, couponId);
+            if (claimed >= coupon.getPerLimit()) {
+                throw new RuntimeException("已达限领数量");
+            }
+        }
         // 原子自增 issued（DB 层 WHERE issued < total 保证不超发）
         int inc = couponDAO.incrementIssued(couponId);
         if (inc <= 0) {
@@ -140,8 +148,8 @@ public class CouponServiceImpl implements CouponService {
         uc.setGmtModified(new Date());
         try {
             userCouponDAO.insert(uc);
-        } catch (Exception e) {
-            // uk_user_coupon 唯一约束：同一用户重复领取，事务回滚 issued 自增
+        } catch (DuplicateKeyException e) {
+            // P2：仅捕获唯一约束冲突；DB 故障等真实异常重新抛出，避免误报业务失败
             throw new RuntimeException("您已领取过该券");
         }
     }

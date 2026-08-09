@@ -29,9 +29,9 @@ export function deleteProduct(id) {
   return request.post('/admin/product/delete', null, { params: { id } })
 }
 
-// 订单列表（全量）：GET /api/admin/order/list
-export function getOrderList() {
-  return request.get('/admin/order/list')
+// 订单列表（分页，P1-11）：GET /api/admin/order/list?pagination=&pageSize=&status=
+export function getOrderList(pagination = 1, pageSize = 20, status = '') {
+  return request.get('/admin/order/list', { params: { pagination, pageSize, status } })
 }
 
 export function updateOrderStatus(orderNumber, status) {
@@ -48,9 +48,9 @@ export function processRefund(orderNumber, approve = true) {
   return request.post('/admin/order/refund/process', null, { params: { orderNumber, approve } })
 }
 
-// 用户列表（全量）：GET /api/admin/user/list
-export function getUserList() {
-  return request.get('/admin/user/list')
+// 用户列表（分页，P1-11）：GET /api/admin/user/list?pagination=&pageSize=
+export function getUserList(pagination = 1, pageSize = 20) {
+  return request.get('/admin/user/list', { params: { pagination, pageSize } })
 }
 
 export function updateUserRole(id, role) {

@@ -7,7 +7,7 @@ import com.qinghe.mall.dataobject.UserCouponDO;
 import com.qinghe.mall.service.CouponService;
 import java.math.BigDecimal;
 import java.util.List;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;

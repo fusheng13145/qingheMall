@@ -112,27 +112,25 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
-  if (to.meta.requiresAuth) {
-    const userStore = useUserStore()
-    if (!userStore.isLoggedIn) {
-      next({ name: 'Login', query: { redirect: to.fullPath } })
-      return
-    }
+router.beforeEach(async (to, from, next) => {
+  const userStore = useUserStore()
+  // P0-4 修复：首次访问受保护页且本地无登录态时，先尝试恢复会话再判断，
+  // 避免已登录用户刷新/直达 /orders、/admin、/merchant 等被误踢回登录页
+  //（checkLogin 内部有 Promise 缓存，与 App.vue onMounted 并发时只发一次请求）
+  if (to.meta.requiresAuth && !userStore.isLoggedIn) {
+    await userStore.checkLogin()
   }
-  if (to.meta.requiresAdmin) {
-    const userStore = useUserStore()
-    if (!userStore.isAdmin) {
-      next({ name: 'Home' })
-      return
-    }
+  if (to.meta.requiresAuth && !userStore.isLoggedIn) {
+    next({ name: 'Login', query: { redirect: to.fullPath } })
+    return
   }
-  if (to.meta.requiresMerchant) {
-    const userStore = useUserStore()
-    if (!userStore.isMerchant) {
-      next({ name: 'Home' })
-      return
-    }
+  if (to.meta.requiresAdmin && !userStore.isAdmin) {
+    next({ name: 'Home' })
+    return
+  }
+  if (to.meta.requiresMerchant && !userStore.isMerchant) {
+    next({ name: 'Home' })
+    return
   }
   next()
 })

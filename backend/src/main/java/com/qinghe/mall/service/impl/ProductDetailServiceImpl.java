@@ -1,5 +1,6 @@
 package com.qinghe.mall.service.impl;
 
+import com.qinghe.mall.config.ProductCacheService;
 import com.qinghe.mall.dao.ProductDetailDAO;
 import com.qinghe.mall.dataobject.ProductDetailDO;
 import com.qinghe.mall.model.ProductDetail;
@@ -18,13 +19,22 @@ public class ProductDetailServiceImpl implements ProductDetailService {
     @Autowired
     private ProductDetailDAO productDetailDAO;
 
+    @Autowired
+    private ProductCacheService productCacheService;
+
     @Override
     public List<ProductDetail> findByProductId(String productId) {
+        // P1-10：热点读优先走缓存，未命中回源 DB 并回填
+        List<ProductDetail> cached = productCacheService.getDetails(productId);
+        if (cached != null) {
+            return cached;
+        }
         List<ProductDetailDO> detailDOs = productDetailDAO.findByProductId(productId);
         List<ProductDetail> details = new ArrayList<>();
         for (ProductDetailDO detailDO : detailDOs) {
             details.add(detailDO.convertToModel());
         }
+        productCacheService.putDetails(productId, details);
         return details;
     }
 
@@ -52,19 +62,43 @@ public class ProductDetailServiceImpl implements ProductDetailService {
 
     @Override
     public boolean updateStock(String id, Integer stock) {
-        return productDetailDAO.updateStock(id, stock) > 0;
+        boolean updated = productDetailDAO.updateStock(id, stock) > 0;
+        if (updated) {
+            evictByDetailId(id);
+        }
+        return updated;
     }
 
     @Override
     public boolean decreaseStock(String id, Integer quantity) {
         int qty = quantity != null && quantity > 0 ? quantity : 1;
-        return productDetailDAO.decreaseStock(id, qty) > 0;
+        boolean updated = productDetailDAO.decreaseStock(id, qty) > 0;
+        if (updated) {
+            evictByDetailId(id);
+        }
+        return updated;
     }
 
     @Override
     public boolean increaseStock(String id, Integer quantity) {
         int qty = quantity != null && quantity > 0 ? quantity : 1;
-        return productDetailDAO.increaseStock(id, qty) > 0;
+        boolean updated = productDetailDAO.increaseStock(id, qty) > 0;
+        if (updated) {
+            evictByDetailId(id);
+        }
+        return updated;
+    }
+
+    /** 规格写操作后按所属商品清缓存（写路径低频，额外一次查询可接受） */
+    private void evictByDetailId(String detailId) {
+        try {
+            ProductDetailDO detailDO = productDetailDAO.findById(detailId);
+            if (detailDO != null && detailDO.getProductId() != null) {
+                productCacheService.evict(detailDO.getProductId());
+            }
+        } catch (Exception e) {
+            // 缓存清理失败不影响主流程
+        }
     }
 
     @Override
@@ -72,6 +106,7 @@ public class ProductDetailServiceImpl implements ProductDetailService {
     public void replaceByProductId(String productId, List<ProductDetail> details) {
         productDetailDAO.deleteByProductId(productId);
         if (details == null || details.isEmpty()) {
+            productCacheService.evict(productId);
             return;
         }
         for (ProductDetail detail : details) {
@@ -88,5 +123,6 @@ public class ProductDetailServiceImpl implements ProductDetailService {
             detailDO.setGmtModified(new Date());
             productDetailDAO.insert(detailDO);
         }
+        productCacheService.evict(productId);
     }
 }

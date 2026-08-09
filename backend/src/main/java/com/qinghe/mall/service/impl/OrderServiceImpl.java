@@ -18,6 +18,7 @@ import com.qinghe.mall.service.UserService;
 import com.qinghe.mall.util.UUIDUtils;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -399,13 +400,11 @@ public class OrderServiceImpl implements OrderService {
                 OrderStatus.TRADE_SHIPPED.name(),
                 OrderStatus.TRADE_COMPLETED.name()
         };
-        BigDecimal paidRevenue = BigDecimal.ZERO;
-        BigDecimal todayRevenue = BigDecimal.ZERO;
-        for (String s : paidStatuses) {
-            paidRevenue = paidRevenue.add(orderDAO.sumTotalPriceByMerchantAndStatus(merchantId, s));
-            todayRevenue = todayRevenue.add(
-                    orderDAO.sumTotalPriceByMerchantAndStatusAndCreatedAfter(merchantId, s, today));
-        }
+        // P2：GROUP BY 一次聚合替代循环 6 次 SUM（配合 (merchant_id,status,gmt_created) 联合索引）
+        BigDecimal paidRevenue = sumAggregateAmount(
+                orderDAO.sumByMerchantAndStatuses(merchantId, Arrays.asList(paidStatuses), null));
+        BigDecimal todayRevenue = sumAggregateAmount(
+                orderDAO.sumByMerchantAndStatuses(merchantId, Arrays.asList(paidStatuses), today));
         Map<String, Object> stats = new HashMap<>();
         stats.put("productCount", productService.queryMerchantPage(merchantId, null, null, 1, 1).getTotalCount());
         stats.put("orderCount", orderDAO.countByMerchantId(merchantId));
@@ -413,6 +412,23 @@ public class OrderServiceImpl implements OrderService {
         stats.put("paidRevenue", paidRevenue);
         stats.put("todayRevenue", todayRevenue);
         return stats;
+    }
+
+    /** P2：聚合结果行（Map: amount）求和 */
+    private BigDecimal sumAggregateAmount(List<Map<String, Object>> rows) {
+        BigDecimal sum = BigDecimal.ZERO;
+        if (rows == null) {
+            return sum;
+        }
+        for (Map<String, Object> row : rows) {
+            Object amount = row.get("amount");
+            if (amount instanceof BigDecimal) {
+                sum = sum.add((BigDecimal) amount);
+            } else if (amount instanceof Number) {
+                sum = sum.add(BigDecimal.valueOf(((Number) amount).doubleValue()));
+            }
+        }
+        return sum;
     }
 
     /** 商家订单归属校验：订单必须属于该商家店铺 */
@@ -549,6 +565,33 @@ public class OrderServiceImpl implements OrderService {
             orders.add(orderDO.convertToModel());
         }
         return fillExtraBatch(orders);
+    }
+
+    @Override
+    public Paging<Order> findAdminPage(Integer pagination, Integer pageSize, String status) {
+        if (pagination == null || pagination < 1) {
+            pagination = 1;
+        }
+        if (pageSize == null || pageSize < 1 || pageSize > 50) {
+            pageSize = 20;
+        }
+        // P1-11：管理端列表分页查询，仅组装当页数据，避免全表捞取 OOM/超时
+        com.github.pagehelper.Page<OrderDO> page =
+                com.github.pagehelper.PageHelper.startPage(pagination, pageSize)
+                        .doSelectPage(() -> orderDAO.queryAdminPage(status));
+
+        Paging<Order> paging = new Paging<>();
+        paging.setPageNum(pagination);
+        paging.setPageSize(pageSize);
+        paging.setTotalPage(page.getPages());
+        paging.setTotalCount(page.getTotal());
+
+        List<Order> orders = new ArrayList<>();
+        for (OrderDO orderDO : page.getResult()) {
+            orders.add(orderDO.convertToModel());
+        }
+        paging.setData(fillExtraBatch(orders));
+        return paging;
     }
 
     @Override

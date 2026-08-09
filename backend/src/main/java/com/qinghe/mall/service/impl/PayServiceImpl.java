@@ -1,6 +1,6 @@
 package com.qinghe.mall.service.impl;
 
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson2.JSONObject;
 import com.qinghe.mall.dao.ProductDAO;
 import com.qinghe.mall.model.ChannelPayResult;
 import com.qinghe.mall.model.Order;
@@ -27,6 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class PayServiceImpl implements PayService {
@@ -53,6 +54,13 @@ public class PayServiceImpl implements PayService {
 
     @Autowired
     private AlipayClient alipayClient;
+
+    /**
+     * 事务模板：支付成功落库（订单状态 + 支付流水 + 销量）必须同一事务。
+     * 不使用 @Transactional 自调用（Spring 代理不生效），显式模板包裹（P0-1 修复）。
+     */
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     /**
      * 模拟支付开关（P1 修复）：生产 profile 置 false，防止绕过真实支付。
@@ -189,18 +197,21 @@ public class PayServiceImpl implements PayService {
                 log.info("支付宝回调非成功状态 orderNumber={}, tradeStatus={}", outTradeNo, tradeStatus);
                 return Result.success("已忽略");
             }
-            // 金额核对（P2-2）：回调金额须与订单实付一致，防金额篡改
+            // 金额核对（P2-2）：回调金额须与订单实付一致，防金额篡改。
+            // P0-2 修复：金额字段为必选项，缺失直接拒绝（原实现缺失时跳过核对，存在旁路）
             String totalAmount = params.get("total_amount");
-            if (StringUtils.isNotBlank(totalAmount)) {
-                Order order = orderService.findByOrderNumber(outTradeNo);
-                if (order == null) {
-                    return Result.fail("订单不存在");
-                }
-                if (new BigDecimal(totalAmount).compareTo(order.getTotalPrice()) != 0) {
-                    log.warn("支付宝回调金额不符 orderNumber={}, notify={}, expected={}",
-                            outTradeNo, totalAmount, order.getTotalPrice());
-                    return Result.fail("回调金额不一致");
-                }
+            if (StringUtils.isBlank(totalAmount)) {
+                log.warn("支付宝回调缺少金额字段 orderNumber={}", outTradeNo);
+                return Result.fail("回调缺少金额字段");
+            }
+            Order order = orderService.findByOrderNumber(outTradeNo);
+            if (order == null) {
+                return Result.fail("订单不存在");
+            }
+            if (new BigDecimal(totalAmount).compareTo(order.getTotalPrice()) != 0) {
+                log.warn("支付宝回调金额不符 orderNumber={}, notify={}, expected={}",
+                        outTradeNo, totalAmount, order.getTotalPrice());
+                return Result.fail("回调金额不一致");
             }
             markPaid(outTradeNo, StringUtils.defaultIfBlank(tradeNo, "ALI_" + System.currentTimeMillis()));
             return Result.success("处理成功");
@@ -224,19 +235,23 @@ public class PayServiceImpl implements PayService {
                 log.info("微信回调非成功状态 orderNumber={}, tradeState={}", outTradeNo, tradeState);
                 return Result.success("已忽略");
             }
-            // 金额核对（P2-2，微信单位分）：amount.total 须与订单实付×100 一致
+            // 金额核对（P2-2，微信单位分）：amount.total 须与订单实付×100 一致。
+            // P0-2 修复：金额字段为必选项，缺失直接拒绝（原实现缺失时跳过核对，存在旁路）
             JSONObject amountObj = biz.getJSONObject("amount");
-            if (amountObj != null && amountObj.getLong("total") != null) {
-                Order order = orderService.findByOrderNumber(outTradeNo);
-                if (order == null) {
-                    return Result.fail("订单不存在");
-                }
-                BigDecimal expectedFen = order.getTotalPrice().multiply(new BigDecimal(100));
-                if (BigDecimal.valueOf(amountObj.getLong("total")).compareTo(expectedFen) != 0) {
-                    log.warn("微信回调金额不符 orderNumber={}, notify={}, expected={}",
-                            outTradeNo, amountObj.getLong("total"), expectedFen);
-                    return Result.fail("回调金额不一致");
-                }
+            Long totalFen = amountObj == null ? null : amountObj.getLong("total");
+            if (totalFen == null) {
+                log.warn("微信回调缺少金额字段 orderNumber={}", outTradeNo);
+                return Result.fail("回调缺少金额字段");
+            }
+            Order order = orderService.findByOrderNumber(outTradeNo);
+            if (order == null) {
+                return Result.fail("订单不存在");
+            }
+            BigDecimal expectedFen = order.getTotalPrice().multiply(new BigDecimal(100));
+            if (BigDecimal.valueOf(totalFen).compareTo(expectedFen) != 0) {
+                log.warn("微信回调金额不符 orderNumber={}, notify={}, expected={}",
+                        outTradeNo, totalFen, expectedFen);
+                return Result.fail("回调金额不一致");
             }
             markPaid(outTradeNo, StringUtils.defaultIfBlank(transactionId, "WX_" + System.currentTimeMillis()));
             return Result.success("处理成功");
@@ -251,18 +266,23 @@ public class PayServiceImpl implements PayService {
 
     /**
      * 支付成功落库（幂等）：仅当订单处于待付款时置成功并累加销量。
+     * P0-1 修复：原 @Transactional 因同类自调用导致 Spring 代理事务不生效，
+     * 现改用 TransactionTemplate 显式包裹，保证「订单置已支付 + 支付流水更新 + 销量累加」
+     * 三笔写操作处于同一事务边界，任一步失败整体回滚。
      */
-    @Transactional
     protected void markPaid(String orderNumber, String channelPaymentId) {
-        boolean updated = orderService.updateStatusIfWaitPay(orderNumber, OrderStatus.TRADE_PAID_SUCCESS.name());
-        if (updated) {
-            paymentRecordService.updatePayStatus(orderNumber, PaymentStatus.SUCCESS.name(), channelPaymentId);
-            Order order = orderService.findByOrderNumber(orderNumber);
-            increasePurchaseNum(order);
-            log.info("订单支付成功 orderNumber={}, channelPaymentId={}", orderNumber, channelPaymentId);
-        } else {
-            log.info("订单已处理过，跳过幂等更新 orderNumber={}", orderNumber);
-        }
+        transactionTemplate.execute(status -> {
+            boolean updated = orderService.updateStatusIfWaitPay(orderNumber, OrderStatus.TRADE_PAID_SUCCESS.name());
+            if (updated) {
+                paymentRecordService.updatePayStatus(orderNumber, PaymentStatus.SUCCESS.name(), channelPaymentId);
+                Order order = orderService.findByOrderNumber(orderNumber);
+                increasePurchaseNum(order);
+                log.info("订单支付成功 orderNumber={}, channelPaymentId={}", orderNumber, channelPaymentId);
+            } else {
+                log.info("订单已处理过，跳过幂等更新 orderNumber={}", orderNumber);
+            }
+            return null;
+        });
     }
 
     /**

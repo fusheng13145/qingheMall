@@ -6,9 +6,9 @@
 
 | 层次 | 技术 | 说明 |
 | --- | --- | --- |
-| 后端 | Spring Boot 2.7.18（Java 8）+ MyBatis 2.3.1 + PageHelper | RESTful API + Session 鉴权 |
-| 中间件 | MySQL 8（`qinghedb`，utf8mb4）+ Redis（Redisson 3.17.0 分布式锁/延迟队列 + Spring Session 共享） | 防超卖、订单号生成、多实例会话 |
-| 前端 | Vue 3.3 + Vite 4 + Pinia + Vue Router + Axios | Composition API、亮/暗主题、响应式 |
+| 后端 | **Spring Boot 3.3.13（Java 17）** + MyBatis 3.0.4 + PageHelper 2.1.0 + fastjson2 | RESTful API + Session 鉴权（jakarta） |
+| 中间件 | MySQL 8（`qinghedb`，utf8mb4）+ Redis（Redisson 3.27.2 分布式锁/延迟队列 + Spring Session 共享） | 防超卖、订单号生成、多实例会话 |
+| 前端 | Vue 3.3 + Vite 6 + Pinia + Vue Router + Axios | Composition API、亮/暗主题、响应式 |
 | 工程化 | Docker Compose 一键部署（含 Prometheus/Grafana 监控）、GitHub Actions CI、JaCoCo 覆盖率门禁、Vitest + ESLint | |
 
 ## 快速启动（本地开发）
@@ -48,10 +48,10 @@ npm run dev                    # http://localhost:5173，/api 与 /uploads 已�
 qingheMall
 ├── backend/                       # 后端服务（Spring Boot / Maven）
 │   ├── index.sql                  # 数据库全量初始化脚本（建库建表 + 种子数据，14 表）
-│   ├── sql/migration/             # 存量库增量迁移脚本 v1.1~v2.0（幂等）
+│   ├── sql/migration/             # 存量库增量迁移脚本 v1.1~v2.4（幂等，14 个）
 │   ├── src/main/java/com/qinghe/mall/   # controller / service / dao / model / config / util
 │   ├── src/main/resources/        # application*.properties + MyBatis XML + seed-images
-│   └── src/test/java/             # 单元测试（101 用例）
+│   └── src/test/java/             # 单元测试（196 用例）
 ├── frontend/                      # 前端应用（Vue 3 / Vite）
 │   ├── src/api/                   # 接口封装（12 个模块）
 │   ├── src/components/ stores/ utils/ router/   # 组件 / Pinia / 工具 / 路由
@@ -67,7 +67,7 @@ qingheMall
 
 ## 文档
 
-> 📖 **唯一文档源：[青禾商城手册.md](青禾商城手册.md)**（v4.0）—— 涵盖项目总览、目录说明、环境配置、快速开始、数据模型、API 大全、核心设计、支付接入、部署运维与上线流程、测试验收、版本路线图、已知问题与 FAQ。**后续文档变更一律并入手册，不再另开独立文档。**
+> 📖 **唯一文档源：[青禾商城手册.md](青禾商城手册.md)**（v4.5）—— 涵盖项目总览、目录说明、环境配置、快速开始、数据模型、API 大全、核心设计、支付接入、部署运维与上线流程、测试验收、版本路线图、已知问题与 FAQ。**后续文档变更一律并入手册，不再另开独立文档。**
 
 ## 已知限制
 

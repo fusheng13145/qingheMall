@@ -4,19 +4,23 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.qinghe.mall.dao.OrderDAO;
+import com.qinghe.mall.dao.ProductDAO;
 import com.qinghe.mall.dao.ProductDetailDAO;
 import com.qinghe.mall.dao.SeckillActivityDAO;
 import com.qinghe.mall.dao.SeckillOrderDAO;
 import com.qinghe.mall.dao.UserDAO;
 import com.qinghe.mall.dataobject.SeckillActivityDO;
+import com.qinghe.mall.model.Product;
 import com.qinghe.mall.model.ProductDetail;
 import com.qinghe.mall.service.SeckillService;
 import com.qinghe.mall.service.ProductDetailService;
+import com.qinghe.mall.service.ProductService;
 import com.qinghe.mall.service.UserService;
 import java.math.BigDecimal;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -29,13 +33,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 /**
- * 秒杀并发不超卖 集成测试（M5-A3）
+ * 秒杀并发不超卖 集成测试（M5-A3，遗留A 隔离改造）
  *
- * 使用真实 MySQL + Redis：创建活动库存 M=10（绑定 pd001，商品库存置高），
+ * 使用真实 MySQL + Redis：**动态创建独立测试商品/规格**，创建活动库存 M=10，
  * 30 个线程各自用独立测试用户抢购 qty=1，断言：
  * 1) 成功下单数 == 10（活动库存多少卖多少）
  * 2) 活动剩余库存 == 0（不为负，不超卖）
- * 测试结束清理测试活动 / 秒杀订单 / 测试用户并恢复商品库存。
+ * 测试结束清理测试活动 / 秒杀订单 / 测试用户 / 测试商品。
  */
 @SpringBootTest
 class SeckillConcurrencyIntegrationTest {
@@ -50,7 +54,13 @@ class SeckillConcurrencyIntegrationTest {
     private SeckillOrderDAO seckillOrderDAO;
 
     @Autowired
+    private ProductService productService;
+
+    @Autowired
     private ProductDetailService productDetailService;
+
+    @Autowired
+    private ProductDAO productDAO;
 
     @Autowired
     private ProductDetailDAO productDetailDAO;
@@ -64,24 +74,39 @@ class SeckillConcurrencyIntegrationTest {
     @Autowired
     private OrderDAO orderDAO;
 
-    private static final String DETAIL_ID = "pd001";
     private static final int STOCK = 10;
     private static final int THREADS = 30;
 
     private String activityId;
-    private Integer originalStock;
-    private final List<Long> testUserIds = new ArrayList<>();
+    private String testDetailId;
+    private String testProductId;
+    private final List<Long> testUserIds = new CopyOnWriteArrayList<>();
 
     @BeforeEach
     void setUp() {
-        // 记录并临时抬高商品库存（确保活动库存是唯独限制因素）
-        ProductDetail detail = productDetailService.findById(DETAIL_ID);
-        originalStock = detail.getStock();
-        productDetailDAO.updateStock(DETAIL_ID, 1000);
+        // 动态创建独立测试商品与规格（隔离改造：不占用种子数据）
+        long ts = System.nanoTime();
+        testDetailId = "pd_it_seckill_" + ts;
+        Product product = new Product();
+        product.setName("集成测试商品-秒杀并发");
+        product.setBrand("TEST");
+        product.setPrice(new BigDecimal("9.90"));
+        product.setProductIntro("integration test seckill product");
+        product.setProductImgs("");
+        Product created = productService.add(product);
+        testProductId = created.getId();
+        ProductDetail detail = new ProductDetail();
+        detail.setProductId(testProductId);
+        detail.setPrice(new BigDecimal("9.90"));
+        detail.setSize(1.0);
+        detail.setStock(1000);
+        // replaceByProductId 内部会重新生成规格 id，须回读真实 id 供活动绑定
+        productDetailService.replaceByProductId(testProductId, Collections.singletonList(detail));
+        testDetailId = productDetailService.findByProductId(testProductId).get(0).getId();
 
         // 创建活动（库存 M，进行中）
         SeckillActivityDO activity = new SeckillActivityDO();
-        activity.setProductDetailId(DETAIL_ID);
+        activity.setProductDetailId(testDetailId);
         activity.setSeckillPrice(new BigDecimal("1.00"));
         activity.setTotalStock(STOCK);
         activity.setRemainStock(STOCK);
@@ -89,13 +114,13 @@ class SeckillConcurrencyIntegrationTest {
         activity.setStartTime(new Date(now.getTime() - 60_000L));
         activity.setEndTime(new Date(now.getTime() + 3_600_000L));
         activity.setStatus("ONGOING");
-        SeckillActivityDO created = seckillService.createActivity(activity);
-        activityId = created.getId();
+        SeckillActivityDO createdActivity = seckillService.createActivity(activity);
+        activityId = createdActivity.getId();
     }
 
     @AfterEach
     void tearDown() {
-        // 清理：删除测试用户的普通订单 + 测试用户；删除活动相关秒杀订单；删除活动；恢复商品库存
+        // 清理：删除测试用户的普通订单 + 测试用户；删除活动相关秒杀订单；删除活动；删除测试商品
         for (Long uid : testUserIds) {
             orderDAO.findByUserIdAndStatus(uid, null)
                     .forEach(o -> orderDAO.deleteByOrderNumberForTest(o.getOrderNumber()));
@@ -103,7 +128,8 @@ class SeckillConcurrencyIntegrationTest {
         }
         seckillOrderDAO.deleteByActivityIdForTest(activityId);
         activityDAO.deleteByIdForTest(activityId);
-        productDetailDAO.updateStock(DETAIL_ID, originalStock);
+        productDetailDAO.deleteByProductId(testProductId);
+        productDAO.deleteById(testProductId);
     }
 
     @Test
@@ -114,7 +140,7 @@ class SeckillConcurrencyIntegrationTest {
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch done = new CountDownLatch(threads);
         AtomicInteger success = new AtomicInteger(0);
-        List<String> errors = new ArrayList<>();
+        List<String> errors = new CopyOnWriteArrayList<>();
 
         for (int i = 0; i < threads; i++) {
             pool.submit(() -> {
@@ -127,10 +153,8 @@ class SeckillConcurrencyIntegrationTest {
                     seckillService.createOrder(activityId, uid, 1, null, null, null);
                     success.incrementAndGet();
                 } catch (Throwable t) {
-                    synchronized (errors) {
-                        if (errors.size() < 5) {
-                            errors.add(t.getClass().getSimpleName() + ": " + t.getMessage());
-                        }
+                    if (errors.size() < 5) {
+                        errors.add(t.getClass().getSimpleName() + ": " + t.getMessage());
                     }
                 } finally {
                     done.countDown();

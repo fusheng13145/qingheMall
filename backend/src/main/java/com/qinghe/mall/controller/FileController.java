@@ -46,7 +46,7 @@ public class FileController {
     @RateLimit(rate = 10, message = "上传过于频繁，请稍后再试")
     @PostMapping("/upload")
     public Result<Map<String, Object>> upload(@RequestParam("file") MultipartFile file,
-                                              javax.servlet.http.HttpServletRequest request) {
+                                              jakarta.servlet.http.HttpServletRequest request) {
         Object userIdObj = request.getSession().getAttribute("userId");
         if (userIdObj == null) {
             return Result.fail(401, "未登录");
@@ -65,6 +65,17 @@ public class FileController {
         }
         if (file.getSize() > 5 * 1024 * 1024) {
             return Result.fail("图片大小不能超过 5MB");
+        }
+        // P1-13：文件头魔数校验——拒绝扩展名伪装的 HTML/SVG 等（防存储型内容污染）
+        try (InputStream in = file.getInputStream()) {
+            byte[] header = new byte[12];
+            int read = in.read(header);
+            if (read < 4 || !matchesMagic(header, ext)) {
+                return Result.fail("文件内容与扩展名不符，仅支持真实图片文件");
+            }
+        } catch (IOException e) {
+            log.error("读取上传文件头失败", e);
+            return Result.fail("文件读取失败，请稍后重试");
         }
 
         File dir = new File(uploadDir);
@@ -85,5 +96,30 @@ public class FileController {
         result.put("url", "/uploads/" + fileName);
         result.put("name", StringUtils.isNotBlank(originalName) ? originalName : fileName);
         return Result.success(result);
+    }
+
+    /**
+     * P1-13：按文件头魔数校验图片真实格式（须与声称的扩展名一致）。
+     * JPEG: FF D8 FF ｜ PNG: 89 50 4E 47 ｜ GIF: 47 49 46 38 ｜ WEBP: RIFF..WEBP
+     */
+    private boolean matchesMagic(byte[] header, String ext) {
+        if (header == null || header.length < 4) {
+            return false;
+        }
+        switch (ext) {
+            case "jpg":
+            case "jpeg":
+                return (header[0] & 0xFF) == 0xFF && (header[1] & 0xFF) == 0xD8 && (header[2] & 0xFF) == 0xFF;
+            case "png":
+                return (header[0] & 0xFF) == 0x89 && header[1] == 'P' && header[2] == 'N' && header[3] == 'G';
+            case "gif":
+                return header[0] == 'G' && header[1] == 'I' && header[2] == 'F' && header[3] == '8';
+            case "webp":
+                return header.length >= 12
+                        && header[0] == 'R' && header[1] == 'I' && header[2] == 'F' && header[3] == 'F'
+                        && header[8] == 'W' && header[9] == 'E' && header[10] == 'B' && header[11] == 'P';
+            default:
+                return false;
+        }
     }
 }

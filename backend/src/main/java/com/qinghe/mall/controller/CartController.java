@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/api/cart")
@@ -28,6 +28,19 @@ public class CartController {
             return null;
         }
         return (Long) userIdObj;
+    }
+
+    /** P2：请求体 Long 参数安全解析（缺失/非法抛 IllegalArgumentException → 全局 400） */
+    private Long requireId(Map<String, Object> body, String key) {
+        Object val = body.get(key);
+        if (val == null || String.valueOf(val).trim().isEmpty()) {
+            throw new IllegalArgumentException("缺少参数 " + key);
+        }
+        try {
+            return Long.parseLong(String.valueOf(val).trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("参数 " + key + " 非法");
+        }
     }
 
     /** 加入购物车 */
@@ -50,7 +63,7 @@ public class CartController {
         if (userId == null) {
             return Result.fail(401, "未登录");
         }
-        Long id = Long.parseLong(String.valueOf(body.get("id")));
+        Long id = requireId(body, "id");
         int quantity = body.get("quantity") == null ? 1 : Integer.parseInt(String.valueOf(body.get("quantity")));
         cartService.updateQuantity(userId, id, quantity);
         return Result.success();
@@ -63,7 +76,7 @@ public class CartController {
         if (userId == null) {
             return Result.fail(401, "未登录");
         }
-        Long id = Long.parseLong(String.valueOf(body.get("id")));
+        Long id = requireId(body, "id");
         boolean selected = body.get("selected") != null && Boolean.parseBoolean(String.valueOf(body.get("selected")));
         cartService.updateSelected(userId, id, selected);
         return Result.success();

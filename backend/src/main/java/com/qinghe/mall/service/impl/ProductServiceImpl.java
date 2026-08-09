@@ -2,6 +2,7 @@ package com.qinghe.mall.service.impl;
 
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
+import com.qinghe.mall.config.ProductCacheService;
 import com.qinghe.mall.dao.ProductDAO;
 import com.qinghe.mall.dataobject.ProductDO;
 import com.qinghe.mall.model.Paging;
@@ -26,6 +27,9 @@ public class ProductServiceImpl implements ProductService {
 
     @Autowired
     private ProductDetailService productDetailService;
+
+    @Autowired
+    private ProductCacheService productCacheService;
 
     @Override
     public Paging<Product> queryPage(Integer pagination, Integer pageSize, String keyword, String brand, String sort) {
@@ -89,11 +93,18 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public Product findById(String id) {
+        // P1-10：热点读优先走缓存，未命中回源 DB 并回填
+        Product cached = productCacheService.getProduct(id);
+        if (cached != null) {
+            return cached;
+        }
         ProductDO productDO = productDAO.findById(id);
         if (productDO == null) {
             return null;
         }
-        return productDO.convertToModel();
+        Product product = productDO.convertToModel();
+        productCacheService.putProduct(product);
+        return product;
     }
 
     @Override
@@ -124,6 +135,7 @@ public class ProductServiceImpl implements ProductService {
         productDO.setGmtCreated(new Date());
         productDO.setGmtModified(new Date());
         productDAO.insert(productDO);
+        productCacheService.evict(productDO.getId());
         return productDO.convertToModel();
     }
 
@@ -145,6 +157,7 @@ public class ProductServiceImpl implements ProductService {
         productDO.setProductImgs(product.getProductImgs());
         productDO.setGmtModified(new Date());
         productDAO.update(productDO);
+        productCacheService.evict(product.getId());
         return productDAO.findById(product.getId()).convertToModel();
     }
 
@@ -160,6 +173,7 @@ public class ProductServiceImpl implements ProductService {
         }
         // SKU 整体替换与商品保存同事务：失败整体回滚，防孤儿商品
         productDetailService.replaceByProductId(product.getId(), details);
+        productCacheService.evict(product.getId());
         Product saved = findById(product.getId());
         saved.setDetails(productDetailService.findByProductId(saved.getId()));
         return saved;
@@ -167,6 +181,10 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public boolean delete(String id) {
-        return productDAO.deleteById(id) > 0;
+        boolean deleted = productDAO.deleteById(id) > 0;
+        if (deleted) {
+            productCacheService.evict(id);
+        }
+        return deleted;
     }
 }

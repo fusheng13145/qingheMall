@@ -3,15 +3,15 @@ package com.qinghe.mall.service.impl;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import com.qinghe.mall.dao.CommentDAO;
+import com.qinghe.mall.dao.OrderDAO;
 import com.qinghe.mall.dataobject.CommentDO;
+import com.qinghe.mall.dataobject.OrderDO;
 import com.qinghe.mall.model.Comment;
-import com.qinghe.mall.model.Order;
 import com.qinghe.mall.model.OrderStatus;
 import com.qinghe.mall.model.Paging;
 import com.qinghe.mall.model.ProductDetail;
 import com.qinghe.mall.model.User;
 import com.qinghe.mall.service.CommentService;
-import com.qinghe.mall.service.OrderService;
 import com.qinghe.mall.service.ProductDetailService;
 import com.qinghe.mall.service.UserService;
 import com.qinghe.mall.util.UUIDUtils;
@@ -31,7 +31,7 @@ public class CommentServiceImpl implements CommentService {
     private CommentDAO commentDAO;
 
     @Autowired
-    private OrderService orderService;
+    private OrderDAO orderDAO;
 
     @Autowired
     private ProductDetailService productDetailService;
@@ -56,23 +56,22 @@ public class CommentServiceImpl implements CommentService {
         if (content.length() > 500) {
             throw new RuntimeException("评价内容不能超过 500 字");
         }
-        // 订单校验：存在、归属当前用户、已支付
-        Order order = orderService.findByOrderNumber(orderNumber);
-        if (order == null) {
+        // 订单校验：存在、归属当前用户、已支付（P2：直查 OrderDAO 轻量校验，避免 fillExtra 冗余组装）
+        OrderDO orderDO = orderDAO.findByOrderNumber(orderNumber);
+        if (orderDO == null) {
             throw new RuntimeException("订单不存在");
         }
-        if (!order.getUserId().equals(userId)) {
+        if (!orderDO.getUserId().equals(userId)) {
             throw new RuntimeException("无权评价该订单");
         }
-        OrderStatus orderStatus = order.getStatus();
-        if (orderStatus != OrderStatus.TRADE_PAID_SUCCESS
-                && orderStatus != OrderStatus.TRADE_SHIPPED
-                && orderStatus != OrderStatus.TRADE_COMPLETED) {
+        if (!OrderStatus.TRADE_PAID_SUCCESS.name().equals(orderDO.getStatus())
+                && !OrderStatus.TRADE_SHIPPED.name().equals(orderDO.getStatus())
+                && !OrderStatus.TRADE_COMPLETED.name().equals(orderDO.getStatus())) {
             throw new RuntimeException("仅已支付或已收货的订单可评价");
         }
         // 商品一致性：订单实际购买的商品必须与评价商品一致（防串评）
-        if (StringUtils.isNotBlank(order.getProductDetailId())) {
-            ProductDetail detail = productDetailService.findById(order.getProductDetailId());
+        if (StringUtils.isNotBlank(orderDO.getProductDetailId())) {
+            ProductDetail detail = productDetailService.findById(orderDO.getProductDetailId());
             if (detail != null && !productId.equals(detail.getProductId())) {
                 throw new RuntimeException("评价商品与订单商品不一致");
             }

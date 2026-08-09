@@ -25,4 +25,7 @@ public interface UserCouponDAO {
 
     /** 释放：仅 USED 时复位为 UNUSED 并清空订单绑定（取消/退款拒绝时调用） */
     int release(@Param("id") String id);
+
+    /** P2：统计用户已领取某券数量（perLimit 限领校验） */
+    int countByUserAndCoupon(@Param("userId") Long userId, @Param("couponId") String couponId);
 }

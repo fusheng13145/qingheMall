@@ -18,6 +18,19 @@ export default defineConfig({
       }
     }
   },
+  build: {
+    // P2：vendor 分包——框架/HTTP 库独立 chunk，提升首屏缓存命中与弱网加载
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vue: ['vue', 'vue-router', 'pinia'],
+          axios: ['axios']
+        }
+      }
+    },
+    sourcemap: false,
+    minify: 'esbuild'
+  },
   test: {
     environment: 'jsdom',
     globals: true

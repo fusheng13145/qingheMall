@@ -79,8 +79,14 @@ async function handleLogin() {
   try {
     const result = await userStore.login(userName.value.trim(), pwd.value)
     if (result.success) {
-      const redirect = route.query.redirect || '/'
-      router.push(redirect)
+      // P0-8 修复：开放重定向防护——仅允许站内相对路径（/ 开头且非 // 协议相对），
+      // 拒绝外部域名跳转，防止钓鱼
+      const redirect = route.query.redirect
+      const safeRedirect =
+        typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')
+          ? redirect
+          : '/'
+      router.push(safeRedirect)
     } else {
       errorMsg.value = result.message
     }

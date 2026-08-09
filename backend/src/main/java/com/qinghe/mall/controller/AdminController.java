@@ -6,7 +6,7 @@ import com.qinghe.mall.dataobject.CouponDO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.*;
 
 @RestController
@@ -98,12 +98,16 @@ public class AdminController {
 
     // ========== 订单管理 ==========
     @GetMapping("/order/list")
-    public Result<List<Order>> listAllOrders(HttpServletRequest request) {
+    public Result<Paging<Order>> listAllOrders(
+            @RequestParam(value = "pagination", defaultValue = "1") Integer pagination,
+            @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize,
+            @RequestParam(value = "status", required = false) String status,
+            HttpServletRequest request) {
         if (!checkAdmin(request)) {
             return Result.fail(403, "无管理员权限");
         }
-        List<Order> orders = orderService.findAll();
-        return Result.success(orders);
+        // P1-11：管理端订单分页（原全表捞取，数据量大时超时/OOM）
+        return Result.success(orderService.findAdminPage(pagination, pageSize, status));
     }
 
     @PostMapping("/order/updateStatus")
@@ -246,14 +250,20 @@ public class AdminController {
 
     // ========== 用户管理 ==========
     @GetMapping("/user/list")
-    public Result<List<User>> listAllUsers(HttpServletRequest request) {
+    public Result<Paging<User>> listAllUsers(
+            @RequestParam(value = "pagination", defaultValue = "1") Integer pagination,
+            @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize,
+            HttpServletRequest request) {
         if (!checkAdmin(request)) {
             return Result.fail(403, "无管理员权限");
         }
-        List<User> users = userService.findAll();
+        // P1-11：管理端用户分页（原全表捞取）
+        Paging<User> paging = userService.findAdminPage(pagination, pageSize);
         // 不返回密码
-        users.forEach(u -> u.setPwd(null));
-        return Result.success(users);
+        if (paging.getData() != null) {
+            paging.getData().forEach(u -> u.setPwd(null));
+        }
+        return Result.success(paging);
     }
 
     @PostMapping("/user/updateRole")
@@ -262,6 +272,10 @@ public class AdminController {
                                        HttpServletRequest request) {
         if (!checkAdmin(request)) {
             return Result.fail(403, "无管理员权限");
+        }
+        // P2：角色白名单校验，防止写入任意脏数据
+        if (!"ADMIN".equals(role) && !"MERCHANT".equals(role) && !"USER".equals(role)) {
+            return Result.fail(400, "非法角色，仅支持 ADMIN/MERCHANT/USER");
         }
         userService.updateRole(id, role);
         return Result.success();

@@ -11,7 +11,8 @@ CREATE TABLE `user` (
     `avatar` varchar(200) DEFAULT NULL COMMENT '头像url',
     `gmt_created` datetime NOT NULL COMMENT '创建时间',
     `gmt_modified` datetime NOT NULL COMMENT '修改时间',
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_user_name` (`user_name`) COMMENT 'P1-9：用户名唯一（登录/注册走索引）'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
 
 -- 商品表（M6：merchant_id 归属商家、NULL=平台自营；status 上下架）
@@ -28,7 +29,10 @@ CREATE TABLE product (
     gmt_created DATETIME NOT NULL COMMENT '创建时间',
     gmt_modified DATETIME NOT NULL COMMENT '修改日期',
     PRIMARY KEY (id),
-    KEY idx_merchant_id (merchant_id) COMMENT '商家商品索引'
+    KEY idx_merchant_id (merchant_id) COMMENT '商家商品索引',
+    KEY idx_status (status) COMMENT 'P1-9：在售列表过滤',
+    KEY idx_brand (brand) COMMENT 'P1-9：品牌筛选',
+    FULLTEXT KEY ft_name_intro (name, product_intro) WITH PARSER ngram COMMENT 'P1-20：商品全文搜索(ngram)'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品表';
 
 -- 商品详情表（规格）
@@ -64,7 +68,8 @@ CREATE TABLE `order` (
     PRIMARY KEY (`id`),
     KEY idx_order_number (`order_number`),
     KEY idx_user_id (`user_id`),
-    KEY idx_merchant_id (`merchant_id`) COMMENT '商家订单索引'
+    KEY idx_merchant_id (`merchant_id`) COMMENT '商家订单索引',
+    KEY idx_status_created (`status`, `gmt_created`) COMMENT 'P1-9：超时关单/报表/状态聚合'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表';
 
 -- 购物车表
@@ -77,8 +82,8 @@ CREATE TABLE cart (
     gmt_created DATETIME NOT NULL COMMENT '创建时间',
     gmt_modified DATETIME NOT NULL COMMENT '修改时间',
     PRIMARY KEY (id),
-    UNIQUE KEY uk_user_detail (user_id, product_detail_id),
-    KEY idx_user_id (user_id)
+    UNIQUE KEY uk_user_detail (user_id, product_detail_id)
+    -- P2：idx_user_id 冗余已删除（uk_user_detail 左前缀已覆盖 user_id 查询）
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='购物车表';
 
 -- 支付流水记录表
@@ -96,7 +101,8 @@ CREATE TABLE qinghe_payment_record (
     gmt_created DATETIME NOT NULL COMMENT '创建时间',
     gmt_modified DATETIME NOT NULL COMMENT '修改时间',
     PRIMARY KEY (id),
-    KEY idx_order_number (order_number)
+    KEY idx_order_number (order_number),
+    KEY idx_pay_status_created (pay_status, gmt_created) COMMENT 'P1-9：支付对账/补单'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流水记录表';
 
 -- 收货地址表

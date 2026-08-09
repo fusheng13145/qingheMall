@@ -7,7 +7,8 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.7.18</version>
+        <!-- 架构级遗留项（2026-08-09）：2.7.18(EOL) → 3.3.13 + JDK 17 + jakarta 命名空间 -->
+        <version>3.3.13</version>
         <relativePath/>
     </parent>
 
@@ -18,14 +19,13 @@
     <description>青禾商城后端服务</description>
 
     <properties>
-        <java.version>1.8</java.version>
-        <mybatis-spring-boot.version>2.3.1</mybatis-spring-boot.version>
-        <druid.version>1.2.16</druid.version>
-        <pagehelper.version>1.4.7</pagehelper.version>
-        <redisson.version>3.17.0</redisson.version>
-        <commons-codec.version>1.15</commons-codec.version>
-        <commons-lang3.version>3.12.0</commons-lang3.version>
-        <fastjson.version>1.2.83</fastjson.version>
+        <java.version>17</java.version>
+        <mybatis-spring-boot.version>3.0.4</mybatis-spring-boot.version>
+        <druid.version>1.2.23</druid.version>
+        <pagehelper.version>2.1.0</pagehelper.version>
+        <redisson.version>3.27.2</redisson.version>
+        <commons-lang3.version>3.14.0</commons-lang3.version>
+        <fastjson.version>2.0.53</fastjson.version>
         <!-- JaCoCo 行覆盖率门禁下限（小数，0.38=38%）。CI `mvn test` 阶段校验，
              低于该值构建失败。基线 0.38 为 2026-08-08 全量 101 用例实测
              （本机 JDK 21 + 真实 MySQL/Redis；行覆盖 1216/3153≈38.6%，取整留余量）；
@@ -90,19 +90,18 @@
             <artifactId>spring-session-data-redis</artifactId>
         </dependency>
 
-        <!-- MySQL -->
+        <!-- MySQL（P1-16：8.0.33 存在 CVE-2023-22102，升级 8.4 LTS，坐标改为 com.mysql:mysql-connector-j） -->
         <dependency>
-            <groupId>mysql</groupId>
-            <artifactId>mysql-connector-java</artifactId>
-            <version>8.0.33</version>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>8.4.0</version>
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Commons Codec -->
+        <!-- Commons Codec（版本由 spring-boot-dependencies 管理，Boot 3.3 → 1.16.1） -->
         <dependency>
             <groupId>commons-codec</groupId>
             <artifactId>commons-codec</artifactId>
-            <version>${commons-codec.version}</version>
         </dependency>
 
         <!-- Spring Security Crypto：BCrypt 密码哈希（版本由 spring-boot-dependencies 管理） -->
@@ -118,10 +117,10 @@
             <version>${commons-lang3.version}</version>
         </dependency>
 
-        <!-- FastJSON -->
+        <!-- Fastjson2（架构级遗留项：1.2.83 → 2.0.x，包名 com.alibaba.fastjson2，核心 API 兼容） -->
         <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>fastjson</artifactId>
+            <groupId>com.alibaba.fastjson2</groupId>
+            <artifactId>fastjson2</artifactId>
             <version>${fastjson.version}</version>
         </dependency>
 
@@ -137,11 +136,12 @@
             <version>3.5.2</version>
         </dependency>
 
-        <!-- BouncyCastle：兼容 PKCS1/PKCS8 格式的支付宝/微信密钥解析 -->
+        <!-- BouncyCastle：兼容 PKCS1/PKCS8 格式的支付宝/微信密钥解析
+             P2：1.70(jdk15on, 2021) → 1.78(jdk18on)，修复 CVE-2023-33202 等侧信道漏洞 -->
         <dependency>
             <groupId>org.bouncycastle</groupId>
-            <artifactId>bcprov-jdk15on</artifactId>
-            <version>1.70</version>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.78</version>
         </dependency>
 
         <!-- Spring Boot Test -->
@@ -152,6 +152,8 @@
         </dependency>
     </dependencies>
 
+    <!-- 2026-08-09：Boot 3.3.13 迁移完成，移除 P0-5 的 spring-framework-bom 5.3.39 手动覆盖
+         （Boot 3 自带 Spring Framework 6.1.x 版本管理，无需也不应再覆盖） -->
     <repositories>
         <repository>
             <id>aliyun</id>
@@ -221,4 +223,32 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- P1-17：依赖漏洞扫描（OWASP Dependency-Check）。
+         默认不启用：NVD 数据下载慢且受官方限流，CI 单独 job 执行 mvn -Psecurity-check verify。
+         检测结果见 target/dependency-check-report.html -->
+    <profiles>
+        <profile>
+            <id>security-check</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.owasp</groupId>
+                        <artifactId>dependency-check-maven</artifactId>
+                        <version>8.4.3</version>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <failBuildOnCVSS>7</failBuildOnCVSS>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

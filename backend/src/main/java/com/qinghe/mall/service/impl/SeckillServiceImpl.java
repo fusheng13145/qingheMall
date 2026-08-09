@@ -18,8 +18,12 @@ import com.qinghe.mall.util.UUIDUtils;
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import org.redisson.api.RAtomicLong;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DuplicateKeyException;
@@ -29,16 +33,27 @@ import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 
 /**
- * 秒杀服务实现（M5-A3）。
+ * 秒杀服务实现（M5-A3，P1-20 Redis 库存预扣）。
  *
- * 下单流程（事务 + 锁）：
+ * 下单流程（事务 + 锁 + Redis 预扣闸门）：
  * 1. 校验活动 ONGOING 且当前时间在 [start, end]；
- * 2. 用户级 Redisson 锁 {@code seckill:user:{activityId}:{userId}} 防同一用户并发重复抢；
- * 3. 事务内：活动库存 CAS 预扣 → 商品 SKU 库存 CAS 扣减 → 普通订单插入（秒杀价）→ stock_log → seckill_order 插入（唯一兜底）；
- * 4. 下单入延迟队列（复用 OrderTimeoutQueue），超时未付自动回滚。
+ * 2. Redis 原子预扣活动库存（DECR 闸门）：将峰值抢购压力从 MySQL 行锁转移到 Redis，
+ *    预扣失败（<0）立即拒绝；Redis 不可用时自动降级为纯 MySQL CAS（正确性不变）；
+ * 3. 用户级 Redisson 锁 {@code seckill:user:{activityId}:{userId}} 防同一用户并发重复抢；
+ * 4. 事务内：活动库存 MySQL CAS → 商品 SKU 库存 CAS 扣减 → 普通订单插入（秒杀价）→ stock_log → seckill_order 插入（唯一兜底）；
+ *    **事务失败时补偿回滚 Redis 预扣**（INCR），保证 Redis 与 MySQL 最终一致；
+ * 5. 下单入延迟队列（复用 OrderTimeoutQueue），超时未付自动回滚（MySQL 回补 + Redis 补偿）。
  */
 @Service
 public class SeckillServiceImpl implements SeckillService {
+
+    private static final Logger log = LoggerFactory.getLogger(SeckillServiceImpl.class);
+
+    /** Redis 秒杀库存闸门 key 前缀（P1-20） */
+    private static final String STOCK_KEY_PREFIX = "seckill:stock:";
+
+    /** Redis 缓存 TTL 额外冗余（活动结束后保留 1 天，避免 key 永久残留） */
+    private static final long CACHE_EXTRA_TTL_MS = 86_400_000L;
 
     @Autowired
     private SeckillActivityDAO activityDAO;
@@ -99,6 +114,8 @@ public class SeckillServiceImpl implements SeckillService {
         activity.setGmtCreated(now);
         activity.setGmtModified(now);
         activityDAO.insert(activity);
+        // P1-20：预热 Redis 库存闸门（TTL 至活动结束后 1 天）
+        preheatStock(activity.getId(), activity.getTotalStock(), activity.getEndTime());
         return activity;
     }
 
@@ -144,6 +161,13 @@ public class SeckillServiceImpl implements SeckillService {
             throw new RuntimeException("非法的活动状态");
         }
         activityDAO.updateStatus(activityId, status);
+        // P1-20：切换为进行中时，以数据库权威库存重建 Redis 闸门
+        if ("ONGOING".equals(status)) {
+            SeckillActivityDO activity = activityDAO.findById(activityId);
+            if (activity != null) {
+                preheatStock(activityId, activity.getRemainStock(), activity.getEndTime());
+            }
+        }
     }
 
     @Override
@@ -169,6 +193,20 @@ public class SeckillServiceImpl implements SeckillService {
             throw new RuntimeException("活动未开始或已结束");
         }
 
+        // P1-20：Redis 库存闸门（原子预扣，降低 MySQL 行锁竞争）。
+        // Redis 不可用时降级为纯 MySQL CAS（correctness 不变），不阻断秒杀。
+        boolean redisGate = false;
+        RAtomicLong stockCounter = null;
+        try {
+            stockCounter = redissonClient.getAtomicLong(STOCK_KEY_PREFIX + activityId);
+            if (!stockCounter.isExists()) {
+                stockCounter.set(activity.getRemainStock());
+            }
+            redisGate = true;
+        } catch (Exception e) {
+            log.warn("秒杀 Redis 库存闸门不可用，降级 MySQL CAS activityId={}, reason={}", activityId, e.getMessage());
+        }
+
         // 用户级防重锁：同一用户同一活动串行化（最终兜底仍是 uk_user_activity 唯一约束）
         RLock userLock = redissonClient.getLock("seckill:user:" + activityId + ":" + userId);
         boolean locked = false;
@@ -177,71 +215,100 @@ public class SeckillServiceImpl implements SeckillService {
             if (!locked) {
                 throw new RuntimeException("请勿重复抢购");
             }
-            // 事务内：活动库存 CAS 预扣 → 商品库存 CAS 扣减 → 普通订单插入 → 流水 → 秒杀订单插入
-            String orderNumber = transactionTemplate.execute(status -> {
-                // 1) 活动库存 CAS 预扣（主防线）
-                int aff = activityDAO.decreaseRemainStock(activityId, qty);
-                if (aff <= 0) {
+            // Redis 前置预扣：原子 DECR，<0 即已抢光（并发安全，无行锁竞争）
+            if (redisGate) {
+                long remain;
+                try {
+                    remain = stockCounter.getAndDecrement();
+                } catch (Exception e) {
+                    // Redis 瞬时故障：降级 MySQL CAS
+                    redisGate = false;
+                    remain = 1;
+                }
+                if (remain < 0) {
+                    try {
+                        stockCounter.incrementAndGet();
+                    } catch (Exception ignored) {
+                        // 补偿失败不影响业务拒绝
+                    }
                     throw new RuntimeException("已抢光");
                 }
-                // 2) 商品 SKU 库存 CAS 扣减（二次校验）
-                ProductDetail before = productDetailService.findById(activity.getProductDetailId());
-                if (before == null) {
-                    throw new RuntimeException("商品规格不存在");
-                }
-                boolean decreased = productDetailService.decreaseStock(activity.getProductDetailId(), qty);
-                if (!decreased) {
-                    throw new RuntimeException("库存不足");
-                }
-                ProductDetail after = productDetailService.findById(activity.getProductDetailId());
+            }
+            // 事务内：活动库存 CAS 预扣 → 商品库存 CAS 扣减 → 普通订单插入 → 流水 → 秒杀订单插入
+            final boolean redisPreDeducted = redisGate;
+            String orderNumber;
+            try {
+                orderNumber = transactionTemplate.execute(status -> {
+                    // 1) 活动库存 CAS 预扣（权威扣减）
+                    int aff = activityDAO.decreaseRemainStock(activityId, qty);
+                    if (aff <= 0) {
+                        throw new RuntimeException("已抢光");
+                    }
+                    // 2) 商品 SKU 库存 CAS 扣减（二次校验）
+                    ProductDetail before = productDetailService.findById(activity.getProductDetailId());
+                    if (before == null) {
+                        throw new RuntimeException("商品规格不存在");
+                    }
+                    boolean decreased = productDetailService.decreaseStock(activity.getProductDetailId(), qty);
+                    if (!decreased) {
+                        throw new RuntimeException("库存不足");
+                    }
+                    ProductDetail after = productDetailService.findById(activity.getProductDetailId());
 
-                // 3) 生成普通订单（秒杀价 × 数量，支付链路零侵入）
-                String no = generateOrderNumber();
-                OrderDO orderDO = new OrderDO();
-                orderDO.setId(UUIDUtils.uuid());
-                orderDO.setOrderNumber(no);
-                orderDO.setUserId(userId);
-                // 商家归属：由商品归属推导落库（NULL=平台自营，M6）
-                Long merchantId = null;
-                if (before != null && before.getProductId() != null) {
-                    com.qinghe.mall.model.Product product = productService.findById(before.getProductId());
-                    merchantId = product != null ? product.getMerchantId() : null;
-                }
-                orderDO.setMerchantId(merchantId);
-                orderDO.setProductDetailId(activity.getProductDetailId());
-                orderDO.setQuantity(qty);
-                orderDO.setTotalPrice(activity.getSeckillPrice().multiply(BigDecimal.valueOf(qty)));
-                orderDO.setStatus(OrderStatus.WAIT_BUYER_PAY.name());
-                // 无优惠券：discount_amount 为 NOT NULL，显式置 0（coupon_id 可空保持 null）
-                orderDO.setDiscountAmount(BigDecimal.ZERO);
-                orderDO.setReceiverName(receiverName);
-                orderDO.setReceiverPhone(receiverPhone);
-                orderDO.setReceiverAddress(receiverAddress);
-                orderDO.setGmtCreated(new Date());
-                orderDO.setGmtModified(new Date());
-                orderDAO.insert(orderDO);
+                    // 3) 生成普通订单（秒杀价 × 数量，支付链路零侵入）
+                    String no = generateOrderNumber();
+                    OrderDO orderDO = new OrderDO();
+                    orderDO.setId(UUIDUtils.uuid());
+                    orderDO.setOrderNumber(no);
+                    orderDO.setUserId(userId);
+                    // 商家归属：由商品归属推导落库（NULL=平台自营，M6）
+                    Long merchantId = null;
+                    if (before != null && before.getProductId() != null) {
+                        com.qinghe.mall.model.Product product = productService.findById(before.getProductId());
+                        merchantId = product != null ? product.getMerchantId() : null;
+                    }
+                    orderDO.setMerchantId(merchantId);
+                    orderDO.setProductDetailId(activity.getProductDetailId());
+                    orderDO.setQuantity(qty);
+                    orderDO.setTotalPrice(activity.getSeckillPrice().multiply(BigDecimal.valueOf(qty)));
+                    orderDO.setStatus(OrderStatus.WAIT_BUYER_PAY.name());
+                    // 无优惠券：discount_amount 为 NOT NULL，显式置 0（coupon_id 可空保持 null）
+                    orderDO.setDiscountAmount(BigDecimal.ZERO);
+                    orderDO.setReceiverName(receiverName);
+                    orderDO.setReceiverPhone(receiverPhone);
+                    orderDO.setReceiverAddress(receiverAddress);
+                    orderDO.setGmtCreated(new Date());
+                    orderDO.setGmtModified(new Date());
+                    orderDAO.insert(orderDO);
 
-                // 4) 库存流水留痕
-                stockLogService.record(activity.getProductDetailId(), before.getProductId(), no,
-                        StockLogService.TYPE_ORDER_DEDUCT, -quantity, before.getStock(), after.getStock());
+                    // 4) 库存流水留痕
+                    stockLogService.record(activity.getProductDetailId(), before.getProductId(), no,
+                            StockLogService.TYPE_ORDER_DEDUCT, -qty, before.getStock(), after.getStock());
 
-                // 5) 秒杀订单（uk_user_activity 唯一兜底；冲突即该用户已参与）
-                SeckillOrderDO so = new SeckillOrderDO();
-                so.setId(UUIDUtils.uuid());
-                so.setUserId(userId);
-                so.setActivityId(activityId);
-                so.setProductDetailId(activity.getProductDetailId());
-                so.setQuantity(qty);
-                so.setOrderNumber(no);
-                so.setStatus("CREATED");
-                so.setGmtCreated(new Date());
-                try {
-                    seckillOrderDAO.insert(so);
-                } catch (DuplicateKeyException e) {
-                    throw new RuntimeException("您已参与过该活动");
+                    // 5) 秒杀订单（uk_user_activity 唯一兜底；冲突即该用户已参与）
+                    SeckillOrderDO so = new SeckillOrderDO();
+                    so.setId(UUIDUtils.uuid());
+                    so.setUserId(userId);
+                    so.setActivityId(activityId);
+                    so.setProductDetailId(activity.getProductDetailId());
+                    so.setQuantity(qty);
+                    so.setOrderNumber(no);
+                    so.setStatus("CREATED");
+                    so.setGmtCreated(new Date());
+                    try {
+                        seckillOrderDAO.insert(so);
+                    } catch (DuplicateKeyException e) {
+                        throw new RuntimeException("您已参与过该活动");
+                    }
+                    return no;
+                });
+            } catch (RuntimeException e) {
+                // P1-20：事务失败（库存不足/重复参与/系统异常）→ 补偿回滚 Redis 预扣，保证最终一致
+                if (redisPreDeducted) {
+                    compensateStock(activityId);
                 }
-                return no;
-            });
+                throw e;
+            }
 
             // 事务已提交：延迟关单入队（超时未付自动回滚活动库存 + 商品库存 + 置 CANCELLED）
             orderTimeoutQueue.offer(orderNumber);
@@ -269,6 +336,33 @@ public class SeckillServiceImpl implements SeckillService {
         int aff = seckillOrderDAO.updateStatus(orderNumber, "CANCELLED");
         if (aff > 0) {
             activityDAO.increaseRemainStock(so.getActivityId(), so.getQuantity());
+            // P1-20：补偿 Redis 预扣库存
+            try {
+                redissonClient.getAtomicLong(STOCK_KEY_PREFIX + so.getActivityId()).incrementAndGet();
+            } catch (Exception e) {
+                log.warn("秒杀回滚 Redis 库存补偿失败 activityId={}, reason={}", so.getActivityId(), e.getMessage());
+            }
+        }
+    }
+
+    /** P1-20：预热/重建 Redis 库存闸门（TTL 至活动结束后 1 天） */
+    private void preheatStock(String activityId, int remainStock, Date endTime) {
+        try {
+            RAtomicLong stock = redissonClient.getAtomicLong(STOCK_KEY_PREFIX + activityId);
+            stock.set(remainStock);
+            long ttlMs = endTime.getTime() - System.currentTimeMillis() + CACHE_EXTRA_TTL_MS;
+            stock.expire(ttlMs > 0 ? ttlMs : CACHE_EXTRA_TTL_MS, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            log.warn("秒杀库存预热失败 activityId={}, reason={}", activityId, e.getMessage());
+        }
+    }
+
+    /** P1-20：事务失败时补偿回滚 Redis 预扣（INCR 恢复） */
+    private void compensateStock(String activityId) {
+        try {
+            redissonClient.getAtomicLong(STOCK_KEY_PREFIX + activityId).incrementAndGet();
+        } catch (Exception e) {
+            log.warn("秒杀 Redis 库存补偿失败 activityId={}, reason={}", activityId, e.getMessage());
         }
     }
 

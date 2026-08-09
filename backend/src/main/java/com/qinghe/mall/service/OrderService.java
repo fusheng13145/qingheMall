@@ -30,6 +30,9 @@ public interface OrderService {
 
     List<Order> findAll();
 
+    /** P1-11：管理端订单分页查询（status 可空=全量；消除全表捞取） */
+    Paging<Order> findAdminPage(Integer pagination, Integer pageSize, String status);
+
     /**
      * 取消订单：仅待付款可取消，事务内回滚库存并置 TRADE_CLOSED。
      * 归属校验：订单必须是当前用户。

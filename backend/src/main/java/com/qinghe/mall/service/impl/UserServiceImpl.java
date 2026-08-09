@@ -27,6 +27,14 @@ public class UserServiceImpl implements UserService {
     @Autowired
     private UserDAO userDAO;
 
+    /**
+     * MD5 兼容登录开关（架构级遗留项）：
+     * true=允许存量 MD5 用户登录（登录成功自动升级 BCrypt，过渡期默认）；
+     * false=拒绝 MD5 哈希登录，仅接受 BCrypt（确认存量库无 MD5 用户后由生产配置关闭）。
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.security.allow-md5-login:true}")
+    private boolean allowMd5Login;
+
     @Override
     public User register(String userName, String pwd) {
         return register(userName, pwd, UserDO.ROLE_USER);
@@ -87,6 +95,10 @@ public class UserServiceImpl implements UserService {
         if (storedPwd.startsWith("$2")) {
             return PASSWORD_ENCODER.matches(rawPwd, storedPwd);
         }
+        // 存量 MD5 兼容已由开关关闭时，直接拒绝（仅接受 BCrypt）
+        if (!allowMd5Login) {
+            return false;
+        }
         // 存量 MD5（加盐）兼容
         if (storedPwd.equalsIgnoreCase(CommonUtils.md5(rawPwd + PWD_SALT))) {
             return true;
@@ -112,6 +124,33 @@ public class UserServiceImpl implements UserService {
             users.add(userDO.convertToModel());
         }
         return users;
+    }
+
+    @Override
+    public com.qinghe.mall.model.Paging<User> findAdminPage(Integer pagination, Integer pageSize) {
+        if (pagination == null || pagination < 1) {
+            pagination = 1;
+        }
+        if (pageSize == null || pageSize < 1 || pageSize > 50) {
+            pageSize = 20;
+        }
+        // P1-11：管理端用户列表分页，消除全表捞取
+        com.github.pagehelper.Page<UserDO> page =
+                com.github.pagehelper.PageHelper.startPage(pagination, pageSize)
+                        .doSelectPage(() -> userDAO.findAll());
+
+        com.qinghe.mall.model.Paging<User> paging = new com.qinghe.mall.model.Paging<>();
+        paging.setPageNum(pagination);
+        paging.setPageSize(pageSize);
+        paging.setTotalPage(page.getPages());
+        paging.setTotalCount(page.getTotal());
+
+        List<User> users = new ArrayList<>();
+        for (UserDO userDO : page.getResult()) {
+            users.add(userDO.convertToModel());
+        }
+        paging.setData(users);
+        return paging;
     }
 
     @Override

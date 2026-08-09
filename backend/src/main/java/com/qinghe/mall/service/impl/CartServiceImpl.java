@@ -10,7 +10,11 @@ import com.qinghe.mall.service.ProductDetailService;
 import com.qinghe.mall.service.ProductService;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -113,11 +117,54 @@ public class CartServiceImpl implements CartService {
     @Override
     public List<Cart> list(Long userId) {
         List<CartDO> cartDOs = cartDAO.findByUserId(userId);
+        if (cartDOs.isEmpty()) {
+            return new ArrayList<>();
+        }
+        // P1-12：批量组装，消除逐条 N+1（原每条 2 次 DB，现 2 次批量 IN 查询）
+        Set<String> detailIds = new LinkedHashSet<>();
+        for (CartDO cartDO : cartDOs) {
+            detailIds.add(cartDO.getProductDetailId());
+        }
+        Map<String, ProductDetail> detailMap = new HashMap<>();
+        for (ProductDetail detail : productDetailService.findByIds(new ArrayList<>(detailIds))) {
+            detailMap.put(detail.getId(), detail);
+        }
+        Set<String> productIds = new LinkedHashSet<>();
+        for (ProductDetail detail : detailMap.values()) {
+            if (StringUtils.isNotBlank(detail.getProductId())) {
+                productIds.add(detail.getProductId());
+            }
+        }
+        Map<String, Product> productMap = new HashMap<>();
+        if (!productIds.isEmpty()) {
+            for (Product product : productService.findByIds(new ArrayList<>(productIds))) {
+                productMap.put(product.getId(), product);
+            }
+        }
+
         List<Cart> carts = new ArrayList<>();
         for (CartDO cartDO : cartDOs) {
-            carts.add(fillExtra(cartDO));
+            carts.add(fillExtraBatch(cartDO, detailMap, productMap));
         }
         return carts;
+    }
+
+    /** 批量组装购物车条目（P1-12：基于已查询的 Map 组装，零额外 DB 往返） */
+    private Cart fillExtraBatch(CartDO cartDO, Map<String, ProductDetail> detailMap, Map<String, Product> productMap) {
+        Cart cart = cartDO.convertToModel();
+        ProductDetail productDetail = detailMap.get(cartDO.getProductDetailId());
+        if (productDetail != null) {
+            cart.setProductId(productDetail.getProductId());
+            cart.setSize(productDetail.getSize());
+            cart.setPrice(productDetail.getPrice());
+            cart.setStock(productDetail.getStock());
+            Product product = productMap.get(productDetail.getProductId());
+            if (product != null) {
+                cart.setProductName(product.getName());
+                cart.setProductImg(firstImg(product.getProductImgs()));
+            }
+        }
+        return cart;
     }
 
     @Override

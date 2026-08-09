@@ -4,7 +4,6 @@ import request from '../utils/request'
 export function uploadImage(file) {
   const formData = new FormData()
   formData.append('file', file)
-  return request.post('/file/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  })
+  // P2：不手动指定 Content-Type——浏览器/axios 自动生成带 boundary 的 multipart 头，手动覆盖可能缺 boundary
+  return request.post('/file/upload', formData)
 }

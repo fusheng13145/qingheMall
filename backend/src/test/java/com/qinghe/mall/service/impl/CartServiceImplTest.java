@@ -65,6 +65,22 @@ class CartServiceImplTest {
         product.setName("测试商品");
         product.setProductImgs("img1.jpg;img2.jpg");
         when(productService.findById("p001")).thenReturn(product);
+        // P1-12：list() 改为批量查询，补充 findByIds mock（按传入 id 列表动态构造）
+        when(productDetailService.findByIds(any())).thenAnswer(inv -> {
+            List<String> ids = inv.getArgument(0);
+            java.util.ArrayList<ProductDetail> details = new java.util.ArrayList<>();
+            for (String id : ids) {
+                ProductDetail d = new ProductDetail();
+                d.setId(id);
+                d.setProductId("p001");
+                d.setPrice(new BigDecimal("99.00"));
+                d.setSize(42.0);
+                d.setStock(100);
+                details.add(d);
+            }
+            return details;
+        });
+        when(productService.findByIds(any())).thenAnswer(inv -> java.util.Collections.singletonList(product));
     }
 
     private CartDO cartDO(Long id, Long userId, String detailId, int qty, int selected) {

@@ -71,9 +71,11 @@ services:
 
   # ============ 监控（P2-2，可选启动）============
   # 指标端点：http://localhost:8080/actuator/prometheus
-  # Prometheus：http://localhost:9090 | Grafana：http://localhost:3000（admin/admin）
+  # Prometheus：http://localhost:9090 | Grafana：http://localhost:3000
+  # ⚠️ Grafana 口令必须通过 .env 的 GRAFANA_ADMIN_PASSWORD 注入（P1-19，禁止默认 admin/admin）
   prometheus:
-    image: prom/prometheus:v2.49.1
+    # P1-19：v2.49.1 → v2.53.3（旧版已过维护期）
+    image: prom/prometheus:v2.53.3
     container_name: qinghe-prometheus
     ports:
       - "9090:9090"
@@ -85,13 +87,15 @@ services:
       - backend
 
   grafana:
-    image: grafana/grafana:10.2.3
+    # P1-19：10.2.3 → 11.3.0（旧版含已披露 CVE）
+    image: grafana/grafana:11.3.0
     container_name: qinghe-grafana
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      # P1-19：口令必须显式注入，缺省直接启动失败，禁止弱口令
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?请在 .env 设置 GRAFANA_ADMIN_PASSWORD 强口令}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_INSTALL_PLUGINS=
     volumes:

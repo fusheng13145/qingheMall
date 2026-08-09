@@ -31,6 +31,12 @@ public class GlobalExceptionHandler {
         return Result.fail(e.getMessage());
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public Result<Void> handleIllegalArgument(IllegalArgumentException e) {
+        // P2：参数非法统一 400（原被 RuntimeException 兜底为 500，语义错误）
+        return Result.fail(400, e.getMessage());
+    }
+
     @ExceptionHandler(RateLimitException.class)
     public Result<Void> handleRateLimit(RateLimitException e) {
         // 限流：HTTP 语义 429 Too Many Requests

@@ -10,7 +10,7 @@ import com.qinghe.mall.model.Result;
 import com.qinghe.mall.service.MerchantService;
 import com.qinghe.mall.service.OrderService;
 import com.qinghe.mall.service.ProductService;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;

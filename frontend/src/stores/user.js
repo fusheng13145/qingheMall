@@ -9,6 +9,9 @@ export const useUserStore = defineStore('user', () => {
   const isLoggedIn = ref(false)
   const role = ref('')
 
+  // P0-4 修复：checkLogin 进行中的 Promise 缓存，合并并发调用（路由守卫 + App.vue onMounted 同时触发只发一次请求）
+  let checkLoginPromise = null
+
   const isAdmin = computed(() => role.value === 'ADMIN')
 
   // 商家身份（M6）：登录角色为 MERCHANT 即可进入商家工作台（经营权限以后端 ACTIVE 校验为准）
@@ -50,16 +53,25 @@ export const useUserStore = defineStore('user', () => {
   }
 
   async function checkLogin() {
-    try {
-      const res = await checkLoginApi()
-      if (res.data) {
-        applyUser(res.data)
-      } else {
-        clearUser()
-      }
-    } catch (error) {
-      clearUser()
+    // P0-4：复用进行中的请求，避免路由守卫与 App.vue 并发触发重复请求
+    if (checkLoginPromise) {
+      return checkLoginPromise
     }
+    checkLoginPromise = (async () => {
+      try {
+        const res = await checkLoginApi()
+        if (res.data) {
+          applyUser(res.data)
+        } else {
+          clearUser()
+        }
+      } catch (error) {
+        clearUser()
+      } finally {
+        checkLoginPromise = null
+      }
+    })()
+    return checkLoginPromise
   }
 
   return {

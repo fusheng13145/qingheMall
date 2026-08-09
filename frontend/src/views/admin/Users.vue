@@ -49,6 +49,11 @@
           </tbody>
         </table>
       </div>
+      <div v-if="totalPage > 1" class="pagination-bar">
+        <button class="page-btn" :disabled="pagination <= 1" @click="goPrev">上一页</button>
+        <span class="page-info">第 {{ pagination }} / {{ totalPage }} 页（共 {{ totalCount }} 条）</span>
+        <button class="page-btn" :disabled="pagination >= totalPage" @click="goNext">下一页</button>
+      </div>
     </div>
   </div>
 </template>
@@ -58,6 +63,11 @@ import { ref, onMounted } from 'vue'
 import { getUserList, updateUserRole } from '../../api/admin'
 
 const users = ref([])
+// P1-11：服务端分页状态
+const pagination = ref(1)
+const pageSize = ref(20)
+const totalCount = ref(0)
+const totalPage = ref(1)
 
 onMounted(async () => {
   await loadUsers()
@@ -65,11 +75,26 @@ onMounted(async () => {
 
 async function loadUsers() {
   try {
-    const res = await getUserList()
-    users.value = res.data || []
+    const res = await getUserList(pagination.value, pageSize.value)
+    const paging = res.data || {}
+    users.value = paging.data || []
+    totalCount.value = paging.totalCount || 0
+    totalPage.value = paging.totalPage || 1
   } catch (e) {
     alert('加载用户列表失败：' + (e.message || '请稍后重试'))
   }
+}
+
+async function goPrev() {
+  if (pagination.value <= 1) return
+  pagination.value--
+  await loadUsers()
+}
+
+async function goNext() {
+  if (pagination.value >= totalPage.value) return
+  pagination.value++
+  await loadUsers()
 }
 
 function formatTime(time) {
@@ -211,5 +236,30 @@ async function handleRoleChange(user, newRole) {
   text-align: center;
   color: var(--color-text-tertiary);
   padding: 40px 24px !important;
+}
+
+/* P1-11：分页控件 */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 4px 0;
+}
+.page-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.page-info {
+  font-size: 13px;
+  color: var(--color-text-secondary);
 }
 </style>

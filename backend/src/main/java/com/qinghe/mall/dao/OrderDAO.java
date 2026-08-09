@@ -55,6 +55,9 @@ public interface OrderDAO {
 
     List<OrderDO> findAll();
 
+    /** P1-11：管理端订单分页查询（status 可空=全量，PageHelper 分页） */
+    List<OrderDO> queryAdminPage(@Param("status") String status);
+
     /** 订单总数（看板聚合） */
     long countAll();
 
@@ -69,4 +72,14 @@ public interface OrderDAO {
      * 返回 Map：day(yyyy-MM-dd) / orderCount / salesAmount。
      */
     java.util.List<java.util.Map<String, Object>> dailySalesReport(@Param("days") int days, @Param("status") String status);
+
+    /**
+     * P2：商家已付口径按状态分组聚合（金额 + 单数），一次查询替代循环 N 次。
+     * after 非空时限定 gmt_created >= after（今日统计）。
+     * 返回 Map：status / orderCount / amount。
+     */
+    java.util.List<java.util.Map<String, Object>> sumByMerchantAndStatuses(
+            @Param("merchantId") Long merchantId,
+            @Param("statuses") java.util.List<String> statuses,
+            @Param("after") java.util.Date after);
 }

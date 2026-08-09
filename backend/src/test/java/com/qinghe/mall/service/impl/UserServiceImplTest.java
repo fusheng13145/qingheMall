@@ -38,6 +38,8 @@ class UserServiceImplTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        // @InjectMocks 不注入 @Value 字段：显式开启 MD5 兼容开关（默认 false 会拒绝存量 MD5 登录）
+        org.springframework.test.util.ReflectionTestUtils.setField(userService, "allowMd5Login", true);
     }
 
     private UserDO mockUserDO(Long id, String userName, String pwd, String role) {
