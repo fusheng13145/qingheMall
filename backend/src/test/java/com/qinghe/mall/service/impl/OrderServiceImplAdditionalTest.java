@@ -3,6 +3,7 @@ package com.qinghe.mall.service.impl;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -403,5 +404,155 @@ class OrderServiceImplAdditionalTest {
         Integer pageNum;
         Integer pageSize;
         Exception thrown;
+    }
+
+    // ============ findByOrderNumber 组装（fillExtra 路径） ============
+
+    @Test
+    @DisplayName("findByOrderNumber 完整组装详情/商品/用户/评价态")
+    void findByOrderNumber_fillsExtra() {
+        OrderDO do_ = new OrderDO();
+        do_.setOrderNumber("QH1");
+        do_.setUserId(1L);
+        do_.setProductDetailId("pd1");
+        when(orderDAO.findByOrderNumber("QH1")).thenReturn(do_);
+        ProductDetail pd = new ProductDetail();
+        pd.setId("pd1");
+        pd.setProductId("p1");
+        when(productDetailService.findById("pd1")).thenReturn(pd);
+        com.qinghe.mall.model.Product product = new com.qinghe.mall.model.Product();
+        product.setId("p1");
+        product.setName("Nike");
+        product.setProductImgs("a.jpg b.jpg");
+        when(productService.findById("p1")).thenReturn(product);
+        com.qinghe.mall.model.User user = new com.qinghe.mall.model.User();
+        user.setId(1L);
+        user.setPwd("secret");
+        when(userService.findById(1L)).thenReturn(user);
+        when(commentDAO.countByOrderNumber("QH1")).thenReturn(2);
+
+        Order order = orderService.findByOrderNumber("QH1");
+
+        assertEquals("QH1", order.getOrderNumber());
+        assertEquals("Nike", order.getProductName());
+        assertEquals("a.jpg", order.getProductImg());
+        assertEquals("pd1", order.getProductDetail().getId());
+        assertNull(order.getUser().getPwd(), "组装用户必须脱敏密码");
+        assertTrue(order.getCommented());
+    }
+
+    @Test
+    @DisplayName("findByOrderNumber 规格/商品缺失时不崩溃")
+    void findByOrderNumber_partialData() {
+        OrderDO do_ = new OrderDO();
+        do_.setOrderNumber("QH2");
+        do_.setProductDetailId("pd-x");
+        when(orderDAO.findByOrderNumber("QH2")).thenReturn(do_);
+        when(productDetailService.findById("pd-x")).thenReturn(null);
+        when(commentDAO.countByOrderNumber("QH2")).thenReturn(0);
+
+        Order order = orderService.findByOrderNumber("QH2");
+
+        assertEquals("QH2", order.getOrderNumber());
+        assertNull(order.getProductDetail());
+        assertFalse(order.getCommented());
+    }
+
+    // ============ findByUserIdAndStatus ============
+
+    @Test
+    @DisplayName("findByUserIdAndStatus 转换并批量组装")
+    void findByUserIdAndStatus_converts() {
+        OrderDO do_ = new OrderDO();
+        do_.setOrderNumber("QH1");
+        do_.setUserId(1L);
+        do_.setProductDetailId("pd1");
+        when(orderDAO.findByUserIdAndStatus(1L, "TRADE_PAID_SUCCESS")).thenReturn(List.of(do_));
+        ProductDetail pd = new ProductDetail();
+        pd.setId("pd1");
+        pd.setProductId("p1");
+        when(productDetailService.findByIds(any())).thenReturn(List.of(pd));
+        com.qinghe.mall.model.Product product = new com.qinghe.mall.model.Product();
+        product.setId("p1");
+        product.setName("Nike");
+        when(productService.findByIds(any())).thenReturn(List.of(product));
+        when(userService.findByIds(any())).thenReturn(new ArrayList<>());
+        when(commentDAO.findCommentedOrderNumbers(any())).thenReturn(new ArrayList<>());
+
+        List<Order> orders = orderService.findByUserIdAndStatus(1L, "TRADE_PAID_SUCCESS");
+
+        assertEquals(1, orders.size());
+        assertEquals("Nike", orders.get(0).getProductName());
+    }
+
+    // ============ closeExpiredOrder 全链路 ============
+
+    @Test
+    @DisplayName("closeExpiredOrder 回滚库存 + 释放券 + 秒杀回滚")
+    void closeExpiredOrder_fullChain() {
+        OrderDO do_ = new OrderDO();
+        do_.setOrderNumber("QH1");
+        do_.setProductDetailId("pd1");
+        do_.setQuantity(2);
+        do_.setStatus(OrderStatus.WAIT_BUYER_PAY.name());
+        do_.setCouponId("uc1");
+        when(orderDAO.findByOrderNumber("QH1")).thenReturn(do_);
+        when(orderDAO.updateStatusIfWaitPay("QH1", OrderStatus.TRADE_CLOSED.name())).thenReturn(1);
+        ProductDetail pd = new ProductDetail();
+        pd.setId("pd1");
+        pd.setProductId("p1");
+        pd.setStock(10);
+        when(productDetailService.findById("pd1")).thenReturn(pd);
+        when(productDetailService.increaseStock("pd1", 2)).thenReturn(true);
+
+        boolean closed = orderService.closeExpiredOrder("QH1");
+
+        assertTrue(closed);
+        verify(productDetailService).increaseStock("pd1", 2);
+        verify(couponService).releaseCoupon("uc1");
+        verify(seckillService).rollbackIfUnpaid("QH1");
+    }
+
+    @Test
+    @DisplayName("closeExpiredOrder 非待付款状态拒绝")
+    void closeExpiredOrder_wrongStatus_throws() {
+        OrderDO do_ = new OrderDO();
+        do_.setOrderNumber("QH1");
+        do_.setStatus(OrderStatus.TRADE_PAID_SUCCESS.name());
+        when(orderDAO.findByOrderNumber("QH1")).thenReturn(do_);
+
+        assertThrows(RuntimeException.class, () -> orderService.closeExpiredOrder("QH1"));
+    }
+
+    @Test
+    @DisplayName("closeExpiredOrder 订单不存在拒绝")
+    void closeExpiredOrder_notFound_throws() {
+        when(orderDAO.findByOrderNumber("QH-X")).thenReturn(null);
+        assertThrows(RuntimeException.class, () -> orderService.closeExpiredOrder("QH-X"));
+    }
+
+    // ============ listByMerchant ============
+
+    @Test
+    @DisplayName("listByMerchant 缺商家信息拒绝")
+    void listByMerchant_nullMerchant_throws() {
+        assertThrows(RuntimeException.class, () -> orderService.listByMerchant(null, null, 1, 10));
+    }
+
+    @Test
+    @DisplayName("listByMerchant 分页参数收敛并透传")
+    void listByMerchant_clampsParams() {
+        java.util.List<OrderDO> raw = new ArrayList<>();
+        when(orderDAO.findByMerchantId(10L, "ON")).thenReturn(raw);
+
+        PagingResultHolder result = new PagingResultHolder();
+        try {
+            com.qinghe.mall.model.Paging<Order> p = orderService.listByMerchant(10L, "ON", 0, 100);
+            result.pageNum = p.getPageNum();
+            result.pageSize = p.getPageSize();
+        } catch (Exception e) {
+            result.thrown = e;
+        }
+        org.mockito.Mockito.verify(orderDAO).findByMerchantId(10L, "ON");
     }
 }

@@ -26,11 +26,12 @@
         <redisson.version>3.27.2</redisson.version>
         <commons-lang3.version>3.14.0</commons-lang3.version>
         <fastjson.version>2.0.53</fastjson.version>
-        <!-- JaCoCo 行覆盖率门禁下限（小数，0.60=60%）。CI `mvn test` 阶段校验，
+        <!-- JaCoCo 行覆盖率门禁下限（小数，0.75=75%）。CI `mvn test` 阶段校验，
              低于该值构建失败。基线沿革：0.38（2026-08-08 全量 101 用例实测
-             1216/3153≈38.6%）→ 0.60（2026-08-10 全量 323 用例实测 2454/3435≈71.4%，
-             上调留 ~11pp 余量防回归）；目标 ≥0.85，随测试补全逐步上调。 -->
-        <jacoco.line.min>0.60</jacoco.line.min>
+             1216/3153≈38.6%）→ 0.60（2026-08-10 全量 370 用例实测 75.4%）→
+             0.75（同日全量 407 用例实测 80.6%，上调留 ~5.6pp 余量防回归）；
+             目标 ≥0.85，随测试补全逐步上调。 -->
+        <jacoco.line.min>0.75</jacoco.line.min>
     </properties>
 
     <dependencies>

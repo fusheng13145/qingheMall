@@ -51,7 +51,7 @@ qingheMall
 │   ├── sql/migration/             # 存量库增量迁移脚本 v1.1~v2.4（幂等，14 个）
 │   ├── src/main/java/com/qinghe/mall/   # controller / service / dao / model / config / util
 │   ├── src/main/resources/        # application*.properties + MyBatis XML + seed-images
-│   └── src/test/java/             # 单元测试（370 用例）
+│   └── src/test/java/             # 单元测试（407 用例）
 ├── frontend/                      # 前端应用（Vue 3 / Vite）
 │   ├── src/api/                   # 接口封装（12 个模块）
 │   ├── src/components/ stores/ styles/ utils/ router/   # 组件（含 common/ConsoleSidebar）/ Pinia / 三端皮肤令牌 / 工具 / 路由
