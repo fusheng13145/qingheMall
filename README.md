@@ -15,7 +15,7 @@
 
 ### 环境要求
 
-JDK 1.8+、Maven 3.6+、Node 16+、MySQL 8、Redis 5+（Docker 20.10+ 可选）。
+JDK 17+、Maven 3.6+、Node 16+、MySQL 8、Redis 5+（Docker 20.10+ 可选）。
 
 ### 1. 初始化数据库
 
@@ -54,7 +54,7 @@ qingheMall
 │   └── src/test/java/             # 单元测试（196 用例）
 ├── frontend/                      # 前端应用（Vue 3 / Vite）
 │   ├── src/api/                   # 接口封装（12 个模块）
-│   ├── src/components/ stores/ utils/ router/   # 组件 / Pinia / 工具 / 路由
+│   ├── src/components/ stores/ styles/ utils/ router/   # 组件（含 common/ConsoleSidebar）/ Pinia / 三端皮肤令牌 / 工具 / 路由
 │   ├── src/views/                 # 页面（前台 + admin/ + merchant/）
 │   ├── vite.config.js  nginx.conf  Dockerfile
 │   └── package-lock.json          # 依赖锁定
@@ -67,7 +67,7 @@ qingheMall
 
 ## 文档
 
-> 📖 **唯一文档源：[青禾商城手册.md](青禾商城手册.md)**（v4.5）—— 涵盖项目总览、目录说明、环境配置、快速开始、数据模型、API 大全、核心设计、支付接入、部署运维与上线流程、测试验收、版本路线图、已知问题与 FAQ。**后续文档变更一律并入手册，不再另开独立文档。**
+> 📖 **唯一文档源：[青禾商城手册.md](青禾商城手册.md)**（v4.6）—— 涵盖项目总览、目录说明、环境配置、快速开始、数据模型、API 大全、核心设计、支付接入、部署运维与上线流程、测试验收、版本路线图、已知问题与 FAQ。**后续文档变更一律并入手册，不再另开独立文档。**
 
 ## 已知限制
 

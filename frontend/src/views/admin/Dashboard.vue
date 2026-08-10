@@ -258,21 +258,21 @@ function formatTime(time) {
   background: rgba(255, 255, 255, 0.1);
 }
 
-/* 统计卡统一收敛到「青禾」翠绿家族，消除蓝/紫/橙与品牌主色的割裂 */
+/* 统计卡收敛到管理端「墨石 + 钢蓝」冷色家族，突出严谨与数据感 */
 .stat-products {
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
 }
 
 .stat-orders {
-  background: linear-gradient(135deg, #14b8a6, #0d9488);
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
 }
 
 .stat-users {
-  background: linear-gradient(135deg, #84cc16, #65a30d);
+  background: linear-gradient(135deg, #64748b, #475569);
 }
 
 .stat-revenue {
-  background: linear-gradient(135deg, #166534, #14532d);
+  background: linear-gradient(135deg, #0f172a, #1e293b);
 }
 
 .stat-icon {

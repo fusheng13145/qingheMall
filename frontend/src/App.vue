@@ -1,28 +1,36 @@
 <template>
-  <div class="app" :data-theme="effectiveTheme">
-    <AppHeader />
-    <main class="main-content">
+  <div class="app" :data-theme="effectiveTheme" data-skin="user">
+    <!-- 用户端壳：仅前台路由渲染头部/页脚；/admin、/merchant 由各自布局接管 -->
+    <AppHeader v-if="!isConsoleRoute" />
+    <main class="main-content" :class="{ 'console-shell': isConsoleRoute }">
       <router-view v-slot="{ Component }">
         <transition name="page-fade" mode="out-in">
           <component :is="Component" />
         </transition>
       </router-view>
     </main>
-    <AppFooter />
+    <AppFooter v-if="!isConsoleRoute" />
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import AppHeader from './components/AppHeader.vue'
 import AppFooter from './components/AppFooter.vue'
 import { useThemeStore } from './stores/theme'
 import { useUserStore } from './stores/user'
 
+const route = useRoute()
 const themeStore = useThemeStore()
 const userStore = useUserStore()
 
 const effectiveTheme = computed(() => themeStore.getEffectiveTheme())
+
+// 控制台类路由（管理后台 / 商家工作台）：隐藏用户端头部与页脚，由各布局独立 chrome 接管
+const isConsoleRoute = computed(
+  () => route.path.startsWith('/admin') || route.path.startsWith('/merchant')
+)
 
 onMounted(() => {
   userStore.checkLogin()
@@ -197,6 +205,12 @@ img {
   max-width: var(--max-width);
   margin: 0 auto;
   padding: 24px 20px;
+}
+
+/* 控制台类路由（/admin、/merchant）：不套用商城内容区宽度约束 */
+.main-content.console-shell {
+  max-width: none;
+  padding: 0;
 }
 
 /* ========== 页面切换动画 ========== */

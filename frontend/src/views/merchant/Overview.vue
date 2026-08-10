@@ -183,6 +183,7 @@ onMounted(async () => {
 .stat-card {
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
+  border-top: 3px solid var(--color-primary); /* 琥珀经营强调 */
   border-radius: var(--radius-md);
   padding: 20px;
 }
@@ -197,5 +198,9 @@ onMounted(async () => {
   font-size: 24px;
   font-weight: 700;
   color: var(--color-primary);
+  /* 经营 KPI 使用等宽数字，强化"有数感"（商家端数据字体） */
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
 }
 </style>

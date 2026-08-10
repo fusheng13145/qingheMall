@@ -1,0 +1,195 @@
+/* =============================================================================
+ * 青禾商城 · 三端皮肤令牌（Qinghe Skins）
+ * 设计依据：《三端UI设计规范.html》（Design System v1.0）
+ *
+ * 架构：基础令牌（内核，三端共享） + 皮肤令牌（角色分化，按 data-skin 覆盖）
+ * 与现有 App.vue 的关系：App.vue 已定义 --color-primary / --color-bg /
+ *   --color-surface / --shadow-* / --radius-* / --font-sans 等「基础层」变量，
+ *   本文件只补充「皮肤层」覆盖，不重复定义基础层。
+ *
+ * 挂载方式（关键）：
+ *   用户端：根元素（.app / App.vue）加  data-skin="user"
+ *   商家端：MerchantLayout 根加        data-skin="merchant"
+ *   管理端：AdminLayout 根加           data-skin="admin"
+ *   在 main.js 或各布局的 <style> 中用 @import 引入本文件即可。
+ *
+ * 向后兼容：每个皮肤同时覆盖 --color-primary（旧组件仍可用），
+ *   并提供 --brand 等新语义令牌；迁移期两套并存，后续组件逐步改用 --brand。
+ * ========================================================================== */
+
+/* -----------------------------------------------------------------------------
+ * 0. 基础层补充（若 App.vue 尚未覆盖，可在此兜底；已存在则以下被忽略）
+ *    中性灰阶 / 间距 / 圆角标度 / 阴影标度 / 动效 / 字体 由 App.vue 统一管理。
+ * -------------------------------------------------------------------------- */
+:root {
+  /* 间距标度（px）—— 组件内边距按皮肤密度缩放时引用 */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+
+  /* 数据字体（ID / 金额 / 状态等宽数字） */
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
+
+  /* 默认皮肤（未显式声明时回退为用户端，保证不破版） */
+  --brand: #10b981;
+  --brand-strong: #059669;
+  --brand-soft: #ecfdf5;
+  --brand-ring: rgba(16, 185, 129, 0.25);
+  --skin-chrome-bg: #ffffff;
+  --skin-chrome-fg: #0f172a;
+  --skin-chrome-border: #e2e8f0;
+  --radius-card: 16px;
+  --radius-ctrl: 12px;
+  --density-gap: 14px;
+  --row-pad: 14px;
+  --fs-base: 14px;
+  --fs-sm: 13px;
+
+  /* 控制台侧栏导航令牌（默认＝亮色 chrome，商家端沿用；管理端深色下覆盖） */
+  --skin-nav-fg: #475569;
+  --skin-nav-hover-bg: rgba(15, 23, 42, 0.05);
+  --skin-nav-hover-fg: #0f172a;
+  --skin-nav-active-bg: var(--brand-soft);
+  --skin-nav-active-fg: var(--brand-strong);
+}
+
+/* -----------------------------------------------------------------------------
+ * 1. 用户端（C 端 · 青禾商城前台）
+ *    亲和、流畅、浏览优先。翠绿品牌色 + 宽松留白 + 大圆角。
+ * -------------------------------------------------------------------------- */
+[data-skin="user"] {
+  --color-primary: #10b981;          /* 向后兼容旧组件 */
+  --color-primary-light: #34d399;
+  --color-primary-dark: #059669;
+
+  --brand: #10b981;
+  --brand-strong: #059669;
+  --brand-soft: #ecfdf5;
+  --brand-ring: rgba(16, 185, 129, 0.25);
+
+  /* chrome = 顶部导航 / 页脚所在的浅色面板 */
+  --skin-chrome-bg: #ffffff;
+  --skin-chrome-fg: #0f172a;
+  --skin-chrome-border: #e2e8f0;
+
+  --radius-card: 16px;   /* 圆润，亲和 */
+  --radius-ctrl: 12px;
+  --density-gap: 14px;   /* 宽松 */
+  --row-pad: 14px;
+  --fs-base: 14px;
+  --fs-sm: 13px;
+  --shadow-card: 0 8px 24px rgba(16, 185, 129, 0.10);
+
+  /* 价格 / 促销强调（用户端特用红） */
+  --color-price: #ef4444;
+}
+
+/* -----------------------------------------------------------------------------
+ * 2. 商家端（B 端 · 商家工作台）
+ *    经营效率 + 数据看板。琥珀金锚点 + 中等密度 + KPI 等宽数字。
+ * -------------------------------------------------------------------------- */
+[data-skin="merchant"] {
+  --color-primary: #d97706;
+  --color-primary-light: #f59e0b;
+  --color-primary-dark: #b45309;
+  --color-primary-50: #fef3c7;
+  --color-primary-100: #fde68a;
+  --color-primary-200: #fcd34d;
+
+  --brand: #d97706;
+  --brand-strong: #b45309;
+  --brand-soft: #fef3c7;
+  --brand-ring: rgba(217, 119, 6, 0.22);
+
+  --skin-chrome-bg: #ffffff;
+  --skin-chrome-fg: #1e293b;
+  --skin-chrome-border: #e5e7eb;
+
+  --radius-card: 12px;   /* 中等，介于用户/管理之间 */
+  --radius-ctrl: 10px;
+  --density-gap: 12px;   /* 均衡 */
+  --row-pad: 10px;
+  --fs-base: 13.5px;
+  --fs-sm: 12.5px;
+  --shadow-card: 0 2px 10px rgba(15, 23, 42, 0.07);
+
+  /* 营收 / 关键 KPI 数字建议用 --font-mono 突出"有数感" */
+}
+
+/* -----------------------------------------------------------------------------
+ * 3. 管理端（平台 · 管控台）
+ *    专业、严谨、高密度。墨石深色侧栏（chrome 明暗分化）+ 钢蓝强调 + 紧凑。
+ *    注意：仅「侧栏 / 顶栏」使用 --skin-chrome-*（深色），
+ *          内容区仍用 --color-surface / --color-bg-elevated（浅色），保持可读性。
+ * -------------------------------------------------------------------------- */
+[data-skin="admin"] {
+  --color-primary: #3b82f6;
+  --color-primary-light: #60a5fa;
+  --color-primary-dark: #2563eb;
+  --color-primary-50: rgba(59, 130, 246, 0.12);
+  --color-primary-100: rgba(59, 130, 246, 0.18);
+  --color-primary-200: rgba(59, 130, 246, 0.28);
+
+  --brand: #3b82f6;
+  --brand-strong: #2563eb;
+  --brand-soft: rgba(59, 130, 246, 0.14);
+  --brand-ring: rgba(59, 130, 246, 0.30);
+
+  /* 深色 chrome —— 管理端最强识别特征 */
+  --skin-chrome-bg: #0f172a;
+  --skin-chrome-fg: #e2e8f0;
+  --skin-chrome-border: #334155;
+
+  --radius-card: 8px;    /* 紧凑、克制 */
+  --radius-ctrl: 6px;
+  --density-gap: 8px;    /* 致密 */
+  --row-pad: 7px;        /* 高密度表格行内边距 */
+  --fs-base: 13px;
+  --fs-sm: 12px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.45);
+
+  /* 深色 chrome 侧栏导航（钢蓝强调） */
+  --skin-nav-fg: rgba(226, 232, 240, 0.72);
+  --skin-nav-hover-bg: rgba(255, 255, 255, 0.08);
+  --skin-nav-hover-fg: #f1f5f9;
+  --skin-nav-active-bg: rgba(59, 130, 246, 0.22);
+  --skin-nav-active-fg: #93c5fd;
+}
+
+/* 管理端在暗色 chrome 下，旧组件若引用 --color-bg-elevated 作侧栏背景需改为
+   使用 --skin-chrome-bg；这里提供便捷类，供 AdminLayout 直接套用。 */
+[data-skin="admin"] .skin-chrome {
+  background: var(--skin-chrome-bg);
+  color: var(--skin-chrome-fg);
+  border-color: var(--skin-chrome-border);
+}
+
+/* -----------------------------------------------------------------------------
+ * 4. 通用语义工具（可选）：让组件"消费语义令牌"而非硬编码颜色
+ *    直接在组件样式里引用这些变量即可随皮肤自动切换。
+ * -------------------------------------------------------------------------- */
+.skin-surface   { background: var(--color-surface, #fff); }
+.skin-text      { color: var(--color-text, #0f172a); }
+.skin-text-2    { color: var(--color-text-secondary, #475569); }
+.skin-border    { border-color: var(--color-border, #e2e8f0); }
+.skin-btn-primary { background: var(--brand); color: #fff; }
+.skin-btn-primary:hover { background: var(--brand-strong); }
+
+/* -----------------------------------------------------------------------------
+ * 5. 接入指引（摘抄，落地时删除注释亦可）
+ *    main.js:  import '@/styles/qinghe-skins.css'
+ *    App.vue:  <div class="app" :data-theme="..." data-skin="user">
+ *    AdminLayout.vue:   根容器 data-skin="admin"
+ *    MerchantLayout.vue:根容器 data-skin="merchant"
+ *    组件引用示例：color: var(--brand); border-radius: var(--radius-card);
+ *    管理端侧栏：class="sidebar skin-chrome"
+ * -------------------------------------------------------------------------- */
+
+/* -----------------------------------------------------------------------------
+ * 6. 管理端高密度表格（皮肤层收敛密度，无需改动各业务页面）
+ *    特异性 (0,3,1) 高于视图内 scoped 样式 (.data-table td[data-v-x])，稳定生效。
+ * -------------------------------------------------------------------------- */
+[data-skin="admin"] .data-table th,
+[data-skin="admin"] .data-table td { padding: 7px 12px; font-size: 12.5px; }
+[data-skin="admin"] .data-table th { text-transform: none; letter-spacing: 0.3px; }
+[data-skin="admin"] .data-table .mono { font-family: var(--font-mono); font-size: 12px; }
+[data-skin="admin"] .data-table .status-badge { padding: 2px 8px; font-size: 11px; border-radius: 4px; }
