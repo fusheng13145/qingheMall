@@ -233,4 +233,50 @@ class AddressCommentFileControllerTest {
                 .andExpect(jsonPath("$.code").value(200));
         org.mockito.Mockito.verify(addressService).setDefault(1L, 1L);
     }
+
+    // ========== 魔数全分支（matchesMagic 覆盖补强） ==========
+
+    @Test
+    void upload_validGif_success() throws Exception {
+        org.springframework.test.util.ReflectionTestUtils.setField(fileController, "uploadDir", tempDir.toString());
+        MockMultipartFile file = new MockMultipartFile("file", "a.gif", "image/gif",
+                "GIF89a".getBytes());
+        fileMvc.perform(multipart("/api/file/upload").file(file).session(session(1L)))
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
+    void upload_validWebp_success() throws Exception {
+        org.springframework.test.util.ReflectionTestUtils.setField(fileController, "uploadDir", tempDir.toString());
+        byte[] webp = "RIFF1234WEBP".getBytes();
+        MockMultipartFile file = new MockMultipartFile("file", "a.webp", "image/webp", webp);
+        fileMvc.perform(multipart("/api/file/upload").file(file).session(session(1L)))
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
+    void upload_validJpeg_success() throws Exception {
+        org.springframework.test.util.ReflectionTestUtils.setField(fileController, "uploadDir", tempDir.toString());
+        byte[] jpeg = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x00, 0x00, 0x00};
+        MockMultipartFile file = new MockMultipartFile("file", "a.jpg", "image/jpeg", jpeg);
+        fileMvc.perform(multipart("/api/file/upload").file(file).session(session(1L)))
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
+    void upload_pngHeaderClaimedJpg_rejected() throws Exception {
+        // PNG 文件头配 .jpg 扩展名 → 魔数与扩展名不符拒绝（防伪装）
+        MockMultipartFile file = new MockMultipartFile("file", "a.jpg", "image/jpeg",
+                new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A});
+        fileMvc.perform(multipart("/api/file/upload").file(file).session(session(1L)))
+                .andExpect(jsonPath("$.code").value(500));
+    }
+
+    @Test
+    void upload_shortHeader_rejected() throws Exception {
+        // 文件头不足 4 字节 → 无法判定魔数，拒绝
+        MockMultipartFile file = new MockMultipartFile("file", "a.png", "image/png", new byte[]{1, 2});
+        fileMvc.perform(multipart("/api/file/upload").file(file).session(session(1L)))
+                .andExpect(jsonPath("$.code").value(500));
+    }
 }

@@ -1,11 +1,13 @@
 package com.qinghe.mall.controller;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -85,5 +87,48 @@ class PayControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").value("支付成功"));
         verify(payService).mockPay(anyLong(), anyString());
+    }
+
+    // ========== 微信回调入口（P1 覆盖补强） ==========
+
+    @Test
+    void wechatNotify_success_mapsToSuccess() throws Exception {
+        when(payService.handleWechatNotify("s", "t", "n", "sig", "{\"order\":1}"))
+                .thenReturn(Result.success("处理成功"));
+
+        mockMvc.perform(post("/api/pay/wechatNotify")
+                        .header("Wechatpay-Serial", "s")
+                        .header("Wechatpay-Timestamp", "t")
+                        .header("Wechatpay-Nonce", "n")
+                        .header("Wechatpay-Signature", "sig")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"order\":1}"))
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
+    }
+
+    @Test
+    void wechatNotify_failure_mapsToFail() throws Exception {
+        when(payService.handleWechatNotify("s", "t", "n", "sig", "bad"))
+                .thenReturn(Result.fail("验签失败"));
+
+        mockMvc.perform(post("/api/pay/wechatNotify")
+                        .header("Wechatpay-Serial", "s")
+                        .header("Wechatpay-Timestamp", "t")
+                        .header("Wechatpay-Nonce", "n")
+                        .header("Wechatpay-Signature", "sig")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("bad"))
+                .andExpect(jsonPath("$.code").value("FAIL"))
+                .andExpect(jsonPath("$.message").value("验签失败"));
+    }
+
+    @Test
+    void alipayNotify_success_returnsOk() throws Exception {
+        when(payService.handleAlipayNotify(any())).thenReturn(Result.success("处理成功"));
+
+        mockMvc.perform(post("/api/pay/alipayNotify")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("out_trade_no", "O1"))
+                .andExpect(content().string("success"));
     }
 }
