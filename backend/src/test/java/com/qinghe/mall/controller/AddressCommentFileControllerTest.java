@@ -157,4 +157,80 @@ class AddressCommentFileControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(500));
     }
+
+    // ========== 补充用例（P1 覆盖补强） ==========
+
+    @org.junit.jupiter.api.io.TempDir
+    java.nio.file.Path tempDir;
+
+    /** 真实 PNG 文件头（89 50 4E 47 0D 0A 1A 0A）+ 截断填充 */
+    private byte[] pngHeader() {
+        byte[] header = new byte[12];
+        byte[] magic = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+        System.arraycopy(magic, 0, header, 0, magic.length);
+        return header;
+    }
+
+    @Test
+    void upload_validPng_success() throws Exception {
+        // 注入临时上传目录（避免污染项目 upload/）
+        org.springframework.test.util.ReflectionTestUtils.setField(fileController, "uploadDir", tempDir.toString());
+        MockMultipartFile file = new MockMultipartFile("file", "a.png", "image/png", pngHeader());
+        fileMvc.perform(multipart("/api/file/upload").file(file).session(session(1L)))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.url").value(org.hamcrest.Matchers.startsWith("/uploads/")));
+    }
+
+    @Test
+    void upload_invalidExt_rejected() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "a.txt", "text/plain", pngHeader());
+        fileMvc.perform(multipart("/api/file/upload").file(file).session(session(1L)))
+                .andExpect(jsonPath("$.code").value(500));
+    }
+
+    @Test
+    void upload_emptyFile_rejected() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "a.png", "image/png", new byte[0]);
+        fileMvc.perform(multipart("/api/file/upload").file(file).session(session(1L)))
+                .andExpect(jsonPath("$.code").value(500));
+    }
+
+    @Test
+    void upload_exceed5MB_rejected() throws Exception {
+        byte[] big = new byte[5 * 1024 * 1024 + 1];
+        MockMultipartFile file = new MockMultipartFile("file", "a.png", "image/png", big);
+        fileMvc.perform(multipart("/api/file/upload").file(file).session(session(1L)))
+                .andExpect(jsonPath("$.code").value(500));
+    }
+
+    // ========== 地址：更新/删除/默认 ==========
+
+    @Test
+    void addressUpdate_authenticated_delegates() throws Exception {
+        com.qinghe.mall.model.Address updated = new com.qinghe.mall.model.Address();
+        when(addressService.update(org.mockito.Mockito.eq(1L),
+                org.mockito.ArgumentMatchers.any(com.qinghe.mall.model.Address.class)))
+                .thenReturn(updated);
+
+        addressMvc.perform(post("/api/address/update")
+                        .session(session(1L))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"id\":1,\"receiverName\":\"张三\"}"))
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
+    void addressDelete_authenticated_delegates() throws Exception {
+        when(addressService.delete(1L, 1L)).thenReturn(true);
+        addressMvc.perform(post("/api/address/delete").session(session(1L)).param("id", "1"))
+                .andExpect(jsonPath("$.code").value(200));
+        org.mockito.Mockito.verify(addressService).delete(1L, 1L);
+    }
+
+    @Test
+    void addressSetDefault_authenticated_delegates() throws Exception {
+        addressMvc.perform(post("/api/address/setDefault").session(session(1L)).param("id", "1"))
+                .andExpect(jsonPath("$.code").value(200));
+        org.mockito.Mockito.verify(addressService).setDefault(1L, 1L);
+    }
 }

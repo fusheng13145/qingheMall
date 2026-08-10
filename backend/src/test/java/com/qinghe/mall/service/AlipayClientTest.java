@@ -249,4 +249,35 @@ class AlipayClientTest {
         assertThrows(IllegalStateException.class,
                 () -> alipayClient.precreate("QH1001", "1.00", "s"), "非法私钥必须抛异常");
     }
+
+    @Test
+    @DisplayName("PKCS1 私钥 PEM（BEGIN RSA PRIVATE KEY）可正常签名")
+    void privateKey_pkcs1_signsRequest() throws Exception {
+        // 由 PKCS8 私钥提取 RSA CRT 参数，构造 PKCS1 ASN.1 结构并转 PEM
+        java.security.KeyFactory keyFactory = java.security.KeyFactory.getInstance("RSA");
+        java.security.spec.RSAPrivateCrtKeySpec spec =
+                keyFactory.getKeySpec(appPrivateKey, java.security.spec.RSAPrivateCrtKeySpec.class);
+        org.bouncycastle.asn1.pkcs.RSAPrivateKey bcKey = new org.bouncycastle.asn1.pkcs.RSAPrivateKey(
+                spec.getModulus(), spec.getPublicExponent(), spec.getPrivateExponent(),
+                spec.getPrimeP(), spec.getPrimeQ(), spec.getPrimeExponentP(), spec.getPrimeExponentQ(),
+                spec.getCrtCoefficient());
+        String base64 = Base64.getEncoder().encodeToString(bcKey.getEncoded());
+        ReflectionTestUtils.setField(properties, "privateKey",
+                "-----BEGIN RSA PRIVATE KEY-----\n" + base64 + "\n-----END RSA PRIVATE KEY-----");
+
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), org.mockito.Mockito.eq(String.class)))
+                .thenReturn(ResponseEntity.ok("{\"alipay_trade_precreate_response\":{\"code\":\"10000\",\"qr_code\":\"qr1\"}}"));
+
+        assertEquals("qr1", alipayClient.precreate("QH1001", "1.00", "s"));
+    }
+
+    @Test
+    @DisplayName("超长 subject 截断到 256 字节仍可下单")
+    void precreate_longSubject_truncates() {
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), org.mockito.Mockito.eq(String.class)))
+                .thenReturn(ResponseEntity.ok("{\"alipay_trade_precreate_response\":{\"code\":\"10000\",\"qr_code\":\"qr2\"}}"));
+
+        String longSubject = "青".repeat(200);
+        assertEquals("qr2", alipayClient.precreate("QH1001", "1.00", longSubject));
+    }
 }

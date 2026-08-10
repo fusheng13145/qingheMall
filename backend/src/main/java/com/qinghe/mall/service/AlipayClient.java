@@ -20,8 +20,6 @@ import java.util.TreeMap;
 import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.bouncycastle.asn1.pkcs.RSAPrivateKey;
-import org.bouncycastle.crypto.params.RSAPrivateCrtKeyParameters;
-import org.bouncycastle.crypto.util.PrivateKeyFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -204,24 +202,24 @@ public class AlipayClient {
         try {
             String pem = readPem(privateKey);
             if (pem.contains("BEGIN RSA PRIVATE KEY")) {
-                // PKCS1：用 BouncyCastle 解析
+                // PKCS1：BouncyCastle ASN.1 直接解析参数，绕开 PrivateKeyFactory
+                //（BC 1.78 的 createKey(byte[]) 仅接受 PKCS8 PrivateKeyInfo，对 PKCS1 DER 抛
+                //  "unknown object in getInstance: ASN1Integer"，原实现 1.70→1.78 升级后回归，测试暴露）
                 String base64 = pem
                         .replace("-----BEGIN RSA PRIVATE KEY-----", "")
                         .replace("-----END RSA PRIVATE KEY-----", "")
                         .replaceAll("\\s", "");
                 RSAPrivateKey pkcs1 = RSAPrivateKey.getInstance(Base64.getDecoder().decode(base64));
-                RSAPrivateCrtKeyParameters keyParams =
-                        (RSAPrivateCrtKeyParameters) PrivateKeyFactory.createKey(pkcs1.getEncoded());
                 java.security.spec.RSAPrivateCrtKeySpec spec =
                         new java.security.spec.RSAPrivateCrtKeySpec(
-                                keyParams.getModulus(),
-                                keyParams.getPublicExponent(),
-                                keyParams.getExponent(),
-                                keyParams.getP(),
-                                keyParams.getQ(),
-                                keyParams.getDP(),
-                                keyParams.getDQ(),
-                                keyParams.getQInv());
+                                pkcs1.getModulus(),
+                                pkcs1.getPublicExponent(),
+                                pkcs1.getPrivateExponent(),
+                                pkcs1.getPrime1(),
+                                pkcs1.getPrime2(),
+                                pkcs1.getExponent1(),
+                                pkcs1.getExponent2(),
+                                pkcs1.getCoefficient());
                 return KeyFactory.getInstance("RSA").generatePrivate(spec);
             }
             // PKCS8

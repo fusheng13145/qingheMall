@@ -1,5 +1,6 @@
 package com.qinghe.mall.controller;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -102,6 +103,84 @@ class OrderControllerTest {
 
         mockMvc.perform(get("/api/order/list").session(session(1L)))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    // ========== 补充用例（P1 覆盖补强） ==========
+
+    @Test
+    void batchAdd_authenticated_delegates() throws Exception {
+        Order o = new Order();
+        o.setProductDetailId("pd1");
+        when(orderService.batchCreateOrders(any())).thenReturn(java.util.List.of(o));
+
+        mockMvc.perform(post("/api/order/batchAdd")
+                        .session(session(1L))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[{\"productDetailId\":\"pd1\",\"quantity\":1}]"))
+                .andExpect(jsonPath("$.code").value(200));
+        org.mockito.ArgumentCaptor<java.util.List<Order>> captor =
+                org.mockito.ArgumentCaptor.forClass(java.util.List.class);
+        verify(orderService).batchCreateOrders(captor.capture());
+        // 批量下单必须注入当前用户
+        assertEquals(1L, captor.getValue().get(0).getUserId());
+    }
+
+    @Test
+    void confirmReceipt_authenticated_delegates() throws Exception {
+        when(orderService.confirmReceipt("O1", 1L)).thenReturn(true);
+        mockMvc.perform(post("/api/order/confirmReceipt").session(session(1L)).param("orderNumber", "O1"))
+                .andExpect(jsonPath("$.code").value(200));
+        verify(orderService).confirmReceipt("O1", 1L);
+    }
+
+    @Test
+    void applyRefund_authenticated_delegates() throws Exception {
+        when(orderService.applyRefund("O1", 1L)).thenReturn(true);
+        mockMvc.perform(post("/api/order/refund/apply").session(session(1L)).param("orderNumber", "O1"))
+                .andExpect(jsonPath("$.code").value(200));
+        verify(orderService).applyRefund("O1", 1L);
+    }
+
+    @Test
+    void get_orderNotFound_fails() throws Exception {
+        when(orderService.findByOrderNumber("O1")).thenReturn(null);
+        mockMvc.perform(get("/api/order/get").session(session(1L)).param("orderNumber", "O1"))
+                .andExpect(jsonPath("$.code").value(500));
+    }
+
+    @Test
+    void get_notOwner_forbidden() throws Exception {
+        Order order = new Order();
+        order.setOrderNumber("O1");
+        order.setUserId(99L);
+        when(orderService.findByOrderNumber("O1")).thenReturn(order);
+
+        mockMvc.perform(get("/api/order/get").session(session(1L)).param("orderNumber", "O1"))
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
+    @Test
+    void get_admin_canViewAnyOrder() throws Exception {
+        Order order = new Order();
+        order.setOrderNumber("O1");
+        order.setUserId(99L);
+        when(orderService.findByOrderNumber("O1")).thenReturn(order);
+        MockHttpSession adminSession = session(1L);
+        adminSession.setAttribute("role", "ADMIN");
+
+        mockMvc.perform(get("/api/order/get").session(adminSession).param("orderNumber", "O1"))
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
+    void get_owner_canViewOwnOrder() throws Exception {
+        Order order = new Order();
+        order.setOrderNumber("O1");
+        order.setUserId(1L);
+        when(orderService.findByOrderNumber("O1")).thenReturn(order);
+
+        mockMvc.perform(get("/api/order/get").session(session(1L)).param("orderNumber", "O1"))
                 .andExpect(jsonPath("$.code").value(200));
     }
 }

@@ -2,10 +2,12 @@ package com.qinghe.mall.service.impl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -422,5 +424,80 @@ class PayServiceImplTest {
 
         assertTrue(result.isSuccess());
         verify(paymentRecordService).insert(any());
+    }
+
+    // ========== 补充用例（P1 覆盖补强） ==========
+
+    @Test
+    void queryPayStatus_alipayActive_queryAndMarkPaid() {
+        Order order = mockOrder(OrderStatus.WAIT_BUYER_PAY, "199.00");
+        when(orderService.findByOrderNumber(ORDER_NUMBER)).thenReturn(order);
+        when(alipayChannel.enabled()).thenReturn(true);
+        when(alipayClient.queryTradeStatus(ORDER_NUMBER)).thenReturn("TRADE_SUCCESS");
+        when(orderService.updateStatusIfWaitPay(ORDER_NUMBER, OrderStatus.TRADE_PAID_SUCCESS.name()))
+                .thenReturn(true);
+
+        Result<String> result = payService.queryPayStatus(1L, ORDER_NUMBER);
+
+        assertTrue(result.isSuccess());
+        assertEquals(OrderStatus.TRADE_PAID_SUCCESS.name(), result.getData());
+        // 主动查询命中 → markPaid 内更新支付流水为 SUCCESS
+        verify(paymentRecordService).updatePayStatus(eq(ORDER_NUMBER), eq("SUCCESS"), org.mockito.ArgumentMatchers.startsWith("ALI_QUERY_"));
+    }
+
+    @Test
+    void queryPayStatus_wechatActive_queryAndMarkPaid() {
+        Order order = mockOrder(OrderStatus.WAIT_BUYER_PAY, "199.00");
+        when(orderService.findByOrderNumber(ORDER_NUMBER)).thenReturn(order);
+        when(alipayChannel.enabled()).thenReturn(false);
+        when(wechatChannel.enabled()).thenReturn(true);
+        when(wechatChannel.queryTradeState(ORDER_NUMBER)).thenReturn("SUCCESS");
+
+        Result<String> result = payService.queryPayStatus(1L, ORDER_NUMBER);
+
+        assertTrue(result.isSuccess());
+        assertEquals(OrderStatus.TRADE_PAID_SUCCESS.name(), result.getData());
+    }
+
+    @Test
+    void queryPayStatus_alreadyPaid_returnsDirectly() {
+        Order order = mockOrder(OrderStatus.TRADE_PAID_SUCCESS, "199.00");
+        when(orderService.findByOrderNumber(ORDER_NUMBER)).thenReturn(order);
+
+        Result<String> result = payService.queryPayStatus(1L, ORDER_NUMBER);
+
+        assertTrue(result.isSuccess());
+        assertEquals(OrderStatus.TRADE_PAID_SUCCESS.name(), result.getData());
+        // 已支付不应触发渠道查询
+        org.mockito.Mockito.verify(alipayChannel, org.mockito.Mockito.never()).enabled();
+    }
+
+    @Test
+    void queryPayStatus_blankOrderNumber_fails() {
+        Result<String> result = payService.queryPayStatus(1L, "");
+
+        assertFalse(result.isSuccess());
+        assertEquals("订单号不能为空", result.getMessage());
+    }
+
+    @Test
+    void queryPayStatus_orderNotFound_fails() {
+        when(orderService.findByOrderNumber("QH-X")).thenReturn(null);
+        Result<String> result = payService.queryPayStatus(1L, "QH-X");
+
+        assertFalse(result.isSuccess());
+        assertEquals("订单不存在", result.getMessage());
+    }
+
+    @Test
+    void createPay_unknownChannel_rejected() {
+        // 移除默认 MOCK 通道：无可用通道时抛 IllegalStateException（由 GlobalExceptionHandler 转 500）
+        ReflectionTestUtils.setField(payService, "payChannels", Collections.emptyList());
+        Order order = mockOrder(OrderStatus.WAIT_BUYER_PAY, "199.00");
+        when(orderService.findByOrderNumber(ORDER_NUMBER)).thenReturn(order);
+
+        assertThrows(IllegalStateException.class,
+                () -> payService.createPay(1L, ORDER_NUMBER, "ALIPAY"),
+                "无可用支付通道");
     }
 }
