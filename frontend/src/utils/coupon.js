@@ -8,6 +8,7 @@
  * @returns {number} 优惠额（保留 2 位小数）
  */
 export function calcCouponDiscount(c, orderTotal) {
+  if (!c) return 0
   const total = Number(orderTotal || 0)
   const threshold = Number(c.threshold != null ? c.threshold : c.couponThreshold || 0)
   if (total < threshold) return 0
@@ -21,6 +22,8 @@ export function calcCouponDiscount(c, orderTotal) {
     if (max != null) raw = Math.min(raw, Number(max))
     discount = Math.min(raw, total)
   }
+  // 折扣不允许为负（rate 异常 >1 或数据错误时置 0，避免前端展示负优惠）
+  if (discount < 0) return 0
   // 规避浮点误差（如 0.15*300=45.0000000001），统一保留 2 位
   return Math.round(discount * 100) / 100
 }

@@ -107,12 +107,14 @@ const routes = [
   }
 ]
 
-const router = createRouter({
-  history: createWebHistory(),
-  routes
-})
-
-router.beforeEach(async (to, from, next) => {
+/**
+ * 全局前置守卫（P0-4 会话恢复）。
+ * 提取为具名函数以支持单测直接调用（vue-router 内部守卫闭包不可外部访问）。
+ * @param {object} to 目标路由
+ * @param {object} from 来源路由
+ * @param {function} next 放行/重定向
+ */
+export async function authGuard(to, from, next) {
   const userStore = useUserStore()
   // P0-4 修复：首次访问受保护页且本地无登录态时，先尝试恢复会话再判断，
   // 避免已登录用户刷新/直达 /orders、/admin、/merchant 等被误踢回登录页
@@ -133,6 +135,13 @@ router.beforeEach(async (to, from, next) => {
     return
   }
   next()
+}
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes
 })
+
+router.beforeEach(authGuard)
 
 export default router
