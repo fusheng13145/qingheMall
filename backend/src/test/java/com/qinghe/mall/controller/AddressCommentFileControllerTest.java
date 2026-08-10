@@ -17,6 +17,7 @@ import com.qinghe.mall.model.Comment;
 import com.qinghe.mall.model.Result;
 import com.qinghe.mall.service.AddressService;
 import com.qinghe.mall.service.CommentService;
+import com.qinghe.mall.service.OrderService;
 import java.util.Collections;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,9 @@ class AddressCommentFileControllerTest {
 
     @Mock
     private CommentService commentService;
+
+    @Mock
+    private OrderService orderService;
 
     @InjectMocks
     private AddressController addressController;
@@ -278,5 +282,44 @@ class AddressCommentFileControllerTest {
         MockMultipartFile file = new MockMultipartFile("file", "a.png", "image/png", new byte[]{1, 2});
         fileMvc.perform(multipart("/api/file/upload").file(file).session(session(1L)))
                 .andExpect(jsonPath("$.code").value(500));
+    }
+
+    // ========== 评价状态接口（归属校验，P1 覆盖补强） ==========
+
+    @Test
+    void orderStatus_unauthenticated_401() throws Exception {
+        commentMvc.perform(get("/api/comment/orderStatus").param("orderNumber", "O1"))
+                .andExpect(jsonPath("$.code").value(401));
+    }
+
+    @Test
+    void orderStatus_orderNotFound_fails() throws Exception {
+        when(orderService.findByOrderNumber("O1")).thenReturn(null);
+        commentMvc.perform(get("/api/comment/orderStatus").session(session(1L)).param("orderNumber", "O1"))
+                .andExpect(jsonPath("$.code").value(500));
+    }
+
+    @Test
+    void orderStatus_notOwner_forbidden() throws Exception {
+        com.qinghe.mall.model.Order order = new com.qinghe.mall.model.Order();
+        order.setOrderNumber("O1");
+        order.setUserId(99L);
+        when(orderService.findByOrderNumber("O1")).thenReturn(order);
+
+        commentMvc.perform(get("/api/comment/orderStatus").session(session(1L)).param("orderNumber", "O1"))
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
+    @Test
+    void orderStatus_owner_returnsCommented() throws Exception {
+        com.qinghe.mall.model.Order order = new com.qinghe.mall.model.Order();
+        order.setOrderNumber("O1");
+        order.setUserId(1L);
+        when(orderService.findByOrderNumber("O1")).thenReturn(order);
+        when(commentService.hasCommented("O1")).thenReturn(true);
+
+        commentMvc.perform(get("/api/comment/orderStatus").session(session(1L)).param("orderNumber", "O1"))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.commented").value(true));
     }
 }
