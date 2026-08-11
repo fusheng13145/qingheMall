@@ -61,6 +61,9 @@ public interface OrderService {
     /** 指定状态订单金额合计（看板聚合） */
     java.math.BigDecimal sumTotalPriceByStatus(String status);
 
+    /** P1-7：统一已付营收口径——多状态订单金额合计 */
+    java.math.BigDecimal sumTotalPriceByStatuses(java.util.List<String> statuses);
+
     /**
      * 仅当订单处于 WAIT_BUYER_PAY 时更新为指定状态（支付成功幂等落库用）。
      * 返回 true 表示本次调用完成了状态流转，false 表示订单已非待付款。

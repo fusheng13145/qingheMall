@@ -59,7 +59,6 @@
                     <option value="TRADE_REFUNDING">退款中</option>
                     <option value="TRADE_REFUNDED">已退款</option>
                     <option value="TRADE_CLOSED">已关闭</option>
-                    <option value="TRADE_PAID_FAILED">支付失败</option>
                   </select>
                 </div>
               </td>
@@ -81,6 +80,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { apiError } from '../../utils/toast'
 import { getOrderList, updateOrderStatus, shipOrder, processRefund } from '../../api/admin'
 
 const orders = ref([])
@@ -99,8 +99,7 @@ const filters = [
   { label: '已完成', value: 'TRADE_COMPLETED' },
   { label: '退款中', value: 'TRADE_REFUNDING' },
   { label: '已退款', value: 'TRADE_REFUNDED' },
-  { label: '已关闭', value: 'TRADE_CLOSED' },
-  { label: '支付失败', value: 'TRADE_PAID_FAILED' }
+  { label: '已关闭', value: 'TRADE_CLOSED' }
 ]
 
 // 服务端已按状态过滤，前端仅透出当页数据（保留原计算属性名以兼容模板）
@@ -119,7 +118,7 @@ async function loadOrders() {
     totalCount.value = paging.totalCount || 0
     totalPage.value = paging.totalPage || 1
   } catch (e) {
-    alert('加载订单列表失败：' + (e.message || '请稍后重试'))
+    apiError(e, '加载订单列表失败')
   }
 }
 
@@ -195,7 +194,7 @@ async function handleStatusChange(order, event) {
     order.status = newStatus
   } catch (e) {
     event.target.value = order.status
-    alert('状态修改失败：' + (e.message || '请稍后重试'))
+    apiError(e, '状态修改失败')
   }
 }
 
@@ -205,7 +204,7 @@ async function handleShip(order) {
     await shipOrder(order.orderNumber)
     order.status = 'TRADE_SHIPPED'
   } catch (e) {
-    alert('发货失败：' + (e.message || '请稍后重试'))
+    apiError(e, '发货失败')
   }
 }
 
@@ -216,7 +215,7 @@ async function handleRefund(order, approve) {
     await processRefund(order.orderNumber, approve)
     order.status = approve ? 'TRADE_REFUNDED' : 'TRADE_PAID_SUCCESS'
   } catch (e) {
-    alert('操作失败：' + (e.message || '请稍后重试'))
+    apiError(e, '操作失败')
   }
 }
 </script>

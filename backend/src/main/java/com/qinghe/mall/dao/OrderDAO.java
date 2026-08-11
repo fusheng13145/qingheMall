@@ -49,6 +49,14 @@ public interface OrderDAO {
                               @Param("targetStatus") String targetStatus);
 
     /**
+     * 多来源 CAS：仅当订单当前状态属于 expectedStatuses 之一时更新为 targetStatus，
+     * 返回受影响行数。P2-18 退货退款申请可从 已付款/已发货/已完成 多状态发起。
+     */
+    int updateStatusWithGuardIn(@Param("orderNumber") String orderNumber,
+                                @Param("expectedStatuses") java.util.List<String> expectedStatuses,
+                                @Param("targetStatus") String targetStatus);
+
+    /**
      * 查询超时未支付的待付款订单（供定时任务关单）。
      */
     List<OrderDO> findExpiredWaitPay(@Param("expireTime") Date expireTime);
@@ -63,6 +71,13 @@ public interface OrderDAO {
 
     /** 指定状态订单金额合计（看板聚合，SUM） */
     java.math.BigDecimal sumTotalPriceByStatus(@Param("status") String status);
+
+    /** P1-7：多状态订单金额合计（统一已付营收口径，SUM ... WHERE status IN (...)） */
+    java.math.BigDecimal sumTotalPriceByStatuses(@Param("statuses") java.util.List<String> statuses);
+
+    /** P1-7：多状态销售日报（近 days 天按天聚合，status IN (...)） */
+    java.util.List<java.util.Map<String, Object>> dailySalesReportByStatuses(
+            @Param("days") int days, @Param("statuses") java.util.List<String> statuses);
 
     /** 按订单号删除（仅测试数据清理使用） */
     int deleteByOrderNumberForTest(@Param("orderNumber") String orderNumber);

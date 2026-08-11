@@ -104,6 +104,12 @@ const routes = [
       { path: 'products', name: 'MerchantProducts', component: () => import('../views/merchant/Products.vue') },
       { path: 'orders', name: 'MerchantOrders', component: () => import('../views/merchant/Orders.vue') }
     ]
+  },
+  // P2-14：未知路由兜底 404 页面（必须置于路由表末尾）
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    component: () => import('../views/NotFound.vue')
   }
 ]
 

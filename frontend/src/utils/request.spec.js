@@ -6,7 +6,15 @@ const { mockStore, mockPush, mockCurrentRoute } = vi.hoisted(() => ({
     userId: null,
     userName: '',
     nickName: '',
-    role: ''
+    role: '',
+    // P2-15：request.js 401 处理改调 clearUser()，mock 需实现并清空登录态字段
+    clearUser: vi.fn(function () {
+      this.isLoggedIn = false
+      this.userId = null
+      this.userName = ''
+      this.nickName = ''
+      this.role = ''
+    })
   },
   mockPush: vi.fn(),
   mockCurrentRoute: { value: { name: 'Cart', fullPath: '/cart' } }
@@ -29,6 +37,7 @@ const { fulfilled, rejected } = request.interceptors.response.handlers[0]
 beforeEach(() => {
   Object.assign(mockStore, { isLoggedIn: true, userId: 1, userName: 'a', nickName: 'a', role: 'USER' })
   mockPush.mockClear()
+  mockStore.clearUser.mockClear()
   mockCurrentRoute.value = { name: 'Cart', fullPath: '/cart' }
 })
 
@@ -54,6 +63,7 @@ describe('request 响应拦截器：401 处理', () => {
   it('清空登录态并跳转登录页（带 redirect）', async () => {
     const error = { response: { status: 401, data: { message: '未登录' } } }
     await expect(rejected(error)).rejects.toMatchObject({ handled: true, message: '未登录' })
+    expect(mockStore.clearUser).toHaveBeenCalledTimes(1)
     expect(mockStore.isLoggedIn).toBe(false)
     expect(mockStore.userId).toBeNull()
     expect(mockPush).toHaveBeenCalledWith({ name: 'Login', query: { redirect: '/cart' } })

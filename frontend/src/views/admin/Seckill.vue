@@ -71,6 +71,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { toast, apiError } from '../../utils/toast'
 import { createSeckill, listSeckills, toggleSeckill } from '../../api/admin'
 import { formatPrice } from '../../utils/format'
 
@@ -120,29 +121,29 @@ async function loadList() {
     const res = await listSeckills(1, 50)
     list.value = (res.data && res.data.data) || []
   } catch (e) {
-    alert('加载列表失败：' + (e.message || '请稍后重试'))
+    apiError(e, '加载列表失败')
   }
 }
 
 function handleCreate() {
   if (!form.value.productDetailId) {
-    alert('请填写商品规格ID')
+    toast.warning('请填写商品规格ID')
     return
   }
   if (!(Number(form.value.seckillPrice) > 0)) {
-    alert('秒杀价必须大于 0')
+    toast.warning('秒杀价必须大于 0')
     return
   }
   if (!(Number(form.value.totalStock) > 0)) {
-    alert('活动库存必须大于 0')
+    toast.warning('活动库存必须大于 0')
     return
   }
   if (!form.value.startTime || !form.value.endTime) {
-    alert('请选择起止时间')
+    toast.warning('请选择起止时间')
     return
   }
   if (new Date(form.value.endTime) <= new Date(form.value.startTime)) {
-    alert('结束时间须晚于开始时间')
+    toast.warning('结束时间须晚于开始时间')
     return
   }
   creating.value = true
@@ -155,12 +156,12 @@ function handleCreate() {
   }
   createSeckill(payload)
     .then(() => {
-      alert('创建成功（状态：未开始，可在列表中点击「开始」生效）')
+      toast.success('创建成功（状态：未开始，可在列表中点击「开始」生效）')
       loadList()
       resetForm()
     })
     .catch(e => {
-      alert('创建失败：' + (e.message || '请稍后重试'))
+      apiError(e, '创建失败')
     })
     .finally(() => {
       creating.value = false
@@ -172,7 +173,7 @@ function handleToggle(a) {
   const next = a.status === 'ONGOING' ? 'CLOSED' : 'ONGOING'
   toggleSeckill(a.id, next)
     .then(() => loadList())
-    .catch(e => alert('操作失败：' + (e.message || '请稍后重试')))
+    .catch(e => apiError(e, '操作失败'))
 }
 
 function resetForm() {

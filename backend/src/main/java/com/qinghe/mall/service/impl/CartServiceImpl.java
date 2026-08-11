@@ -1,5 +1,6 @@
 package com.qinghe.mall.service.impl;
 
+import com.qinghe.mall.exception.BusinessException;
 import com.qinghe.mall.dao.CartDAO;
 import com.qinghe.mall.dataobject.CartDO;
 import com.qinghe.mall.model.Cart;
@@ -37,11 +38,11 @@ public class CartServiceImpl implements CartService {
     @Override
     public Cart add(Long userId, String productDetailId, Integer quantity) {
         if (productDetailId == null) {
-            throw new RuntimeException("商品规格ID不能为空");
+            throw new BusinessException("商品规格ID不能为空");
         }
         ProductDetail productDetail = productDetailService.findById(productDetailId);
         if (productDetail == null) {
-            throw new RuntimeException("商品规格不存在");
+            throw new BusinessException("商品规格不存在");
         }
         int qty = quantity != null && quantity > 0 ? quantity : 1;
 
@@ -68,7 +69,7 @@ public class CartServiceImpl implements CartService {
                 .filter(c -> c.getId().equals(id))
                 .findFirst().orElse(null);
         if (cartDO == null) {
-            throw new RuntimeException("购物车条目不存在");
+            throw new BusinessException("购物车条目不存在");
         }
         int qty = quantity != null && quantity > 0 ? quantity : 1;
         if (qty > MAX_QUANTITY) {
@@ -77,7 +78,7 @@ public class CartServiceImpl implements CartService {
         // 不超过库存
         ProductDetail productDetail = productDetailService.findById(cartDO.getProductDetailId());
         if (productDetail != null && qty > productDetail.getStock()) {
-            throw new RuntimeException("超出库存，最多可购买 " + productDetail.getStock() + " 件");
+            throw new BusinessException("超出库存，最多可购买 " + productDetail.getStock() + " 件");
         }
         return cartDAO.updateQuantity(id, qty) > 0;
     }
@@ -88,7 +89,7 @@ public class CartServiceImpl implements CartService {
                 .filter(c -> c.getId().equals(id))
                 .findFirst().orElse(null);
         if (cartDO == null) {
-            throw new RuntimeException("购物车条目不存在");
+            throw new BusinessException("购物车条目不存在");
         }
         return cartDAO.updateSelected(id, selected ? 1 : 0) > 0;
     }

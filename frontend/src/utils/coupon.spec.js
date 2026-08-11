@@ -66,6 +66,26 @@ describe('calcCouponDiscount 边界', () => {
   })
 })
 
+describe('CouponDO 形态兼容（领券中心/管理端，type/amount/discount 字段）', () => {
+  it('满减券按 type 字段识别并计算', () => {
+    expect(calcCouponDiscount({ type: 'FULL_REDUCTION', threshold: 100, amount: 20 }, 300)).toBe(20)
+  })
+
+  it('折扣券按 type 字段识别并计算', () => {
+    expect(calcCouponDiscount({ type: 'DISCOUNT', threshold: 0, discount: 0.85 }, 200)).toBe(30)
+  })
+
+  it('couponRuleText 渲染满减/折扣规则', () => {
+    expect(couponRuleText({ type: 'FULL_REDUCTION', threshold: 100, amount: 20 })).toBe('满100减20')
+    expect(couponRuleText({ type: 'DISCOUNT', discount: 0.85, maxDiscount: 50 })).toBe('85折（封顶50元）')
+  })
+
+  it('couponType 优先于 type（UserCouponDO 同时携带时不被覆盖', () => {
+    expect(calcCouponDiscount(
+      { couponType: 'FULL_REDUCTION', type: 'DISCOUNT', threshold: 0, couponAmount: 10 }, 100)).toBe(10)
+  })
+})
+
 describe('couponTypeText 类型文案', () => {
   it('映射满减与折扣', () => {
     expect(couponTypeText('FULL_REDUCTION')).toBe('满减券')

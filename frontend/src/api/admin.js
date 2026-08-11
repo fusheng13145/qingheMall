@@ -14,7 +14,7 @@ export function getSalesReport(days = 7) {
 
 // 商品列表（管理端全量分页接口，含下架商品）
 export function getProductList(pageNum = 1, pageSize = 20, keyword = '') {
-  return request.get('/admin/product/list', { params: { pagination: pageNum, pageSize, keyword } })
+  return request.get('/admin/product/list', { params: { pageNum, pageSize, keyword } })
 }
 
 export function addProduct(data) {
@@ -29,9 +29,9 @@ export function deleteProduct(id) {
   return request.post('/admin/product/delete', null, { params: { id } })
 }
 
-// 订单列表（分页，P1-11）：GET /api/admin/order/list?pagination=&pageSize=&status=
-export function getOrderList(pagination = 1, pageSize = 20, status = '') {
-  return request.get('/admin/order/list', { params: { pagination, pageSize, status } })
+// 订单列表（分页，P1-11）：GET /api/admin/order/list?pageNum=&pageSize=&status=（P2-12 统一 pageNum）
+export function getOrderList(pageNum = 1, pageSize = 20, status = '') {
+  return request.get('/admin/order/list', { params: { pageNum, pageSize, status } })
 }
 
 export function updateOrderStatus(orderNumber, status) {
@@ -48,9 +48,9 @@ export function processRefund(orderNumber, approve = true) {
   return request.post('/admin/order/refund/process', null, { params: { orderNumber, approve } })
 }
 
-// 用户列表（分页，P1-11）：GET /api/admin/user/list?pagination=&pageSize=
-export function getUserList(pagination = 1, pageSize = 20) {
-  return request.get('/admin/user/list', { params: { pagination, pageSize } })
+// 用户列表（分页，P1-11）：GET /api/admin/user/list?pageNum=&pageSize=（P2-12 统一 pageNum）
+export function getUserList(pageNum = 1, pageSize = 20) {
+  return request.get('/admin/user/list', { params: { pageNum, pageSize } })
 }
 
 export function updateUserRole(id, role) {

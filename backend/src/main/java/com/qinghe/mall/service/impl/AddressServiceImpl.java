@@ -1,5 +1,6 @@
 package com.qinghe.mall.service.impl;
 
+import com.qinghe.mall.exception.BusinessException;
 import com.qinghe.mall.dao.AddressDAO;
 import com.qinghe.mall.dataobject.AddressDO;
 import com.qinghe.mall.model.Address;
@@ -20,16 +21,16 @@ public class AddressServiceImpl implements AddressService {
 
     private void validate(Address address) {
         if (StringUtils.isBlank(address.getReceiverName())) {
-            throw new RuntimeException("请填写收货人");
+            throw new BusinessException("请填写收货人");
         }
         if (StringUtils.isBlank(address.getReceiverPhone())) {
-            throw new RuntimeException("请填写联系电话");
+            throw new BusinessException("请填写联系电话");
         }
         if (!address.getReceiverPhone().matches("^1\\d{10}$")) {
-            throw new RuntimeException("联系电话格式不正确");
+            throw new BusinessException("联系电话格式不正确");
         }
         if (StringUtils.isBlank(address.getReceiverAddress())) {
-            throw new RuntimeException("请填写收货地址");
+            throw new BusinessException("请填写收货地址");
         }
     }
 
@@ -58,11 +59,11 @@ public class AddressServiceImpl implements AddressService {
     @Transactional
     public Address update(Long userId, Address address) {
         if (address.getId() == null) {
-            throw new RuntimeException("地址ID不能为空");
+            throw new BusinessException("地址ID不能为空");
         }
         AddressDO existing = addressDAO.findById(address.getId());
         if (existing == null || !existing.getUserId().equals(userId)) {
-            throw new RuntimeException("地址不存在");
+            throw new BusinessException("地址不存在");
         }
         validate(address);
         boolean asDefault = address.getIsDefault() != null && address.getIsDefault();
@@ -93,7 +94,7 @@ public class AddressServiceImpl implements AddressService {
     public boolean setDefault(Long userId, Long id) {
         AddressDO existing = addressDAO.findById(id);
         if (existing == null || !existing.getUserId().equals(userId)) {
-            throw new RuntimeException("地址不存在");
+            throw new BusinessException("地址不存在");
         }
         addressDAO.clearDefaultByUserId(userId);
         return addressDAO.setDefault(id, userId) > 0;

@@ -1,5 +1,6 @@
 package com.qinghe.mall.service.impl;
 
+import com.qinghe.mall.exception.BusinessException;
 import com.qinghe.mall.dao.UserDAO;
 import com.qinghe.mall.dataobject.UserDO;
 import com.qinghe.mall.model.User;
@@ -43,14 +44,14 @@ public class UserServiceImpl implements UserService {
     @Override
     public User register(String userName, String pwd, String role) {
         if (StringUtils.isBlank(userName) || StringUtils.isBlank(pwd)) {
-            throw new RuntimeException("用户名或密码不能为空");
+            throw new BusinessException("用户名或密码不能为空");
         }
         if (!UserDO.ROLE_USER.equals(role) && !UserDO.ROLE_MERCHANT.equals(role)) {
-            throw new RuntimeException("非法的注册角色");
+            throw new BusinessException("非法的注册角色");
         }
         UserDO existUser = userDAO.findByUserName(userName);
         if (existUser != null) {
-            throw new RuntimeException("用户名已存在");
+            throw new BusinessException("用户名已存在");
         }
         UserDO userDO = new UserDO();
         userDO.setUserName(userName);
@@ -68,14 +69,14 @@ public class UserServiceImpl implements UserService {
     @Override
     public User login(String userName, String pwd) {
         if (StringUtils.isBlank(userName) || StringUtils.isBlank(pwd)) {
-            throw new RuntimeException("用户名或密码不能为空");
+            throw new BusinessException("用户名或密码不能为空");
         }
         UserDO userDO = userDAO.findByUserName(userName);
         if (userDO == null) {
-            throw new RuntimeException("用户不存在");
+            throw new BusinessException("用户不存在");
         }
         if (!matchesPassword(pwd, userDO.getPwd())) {
-            throw new RuntimeException("密码错误");
+            throw new BusinessException("密码错误");
         }
         // 存量 MD5 用户登录成功后，立即升级为 BCrypt 哈希，完成安全过渡
         if (!userDO.getPwd().startsWith("$2")) {
@@ -188,10 +189,10 @@ public class UserServiceImpl implements UserService {
     @Override
     public User updateProfile(Long id, String nickName, String avatar) {
         if (StringUtils.isBlank(nickName) && StringUtils.isBlank(avatar)) {
-            throw new RuntimeException("没有需要修改的内容");
+            throw new BusinessException("没有需要修改的内容");
         }
         if (StringUtils.isNotBlank(nickName) && nickName.length() > 20) {
-            throw new RuntimeException("昵称不能超过 20 个字符");
+            throw new BusinessException("昵称不能超过 20 个字符");
         }
         userDAO.updateProfile(id, nickName, avatar);
         User user = findById(id);

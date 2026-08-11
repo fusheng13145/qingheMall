@@ -2,8 +2,9 @@
 # 青禾商城 Prometheus 告警规则（RR-8 监控告警）
 # 由 deploy/prometheus.yml 的 rule_files 挂载加载
 # 指标来源：Spring Boot Actuator + Micrometer（/actuator/prometheus）
-# 说明：规则在 Prometheus 内持续求值并进入 firing 状态；
-#       如需"通知到人"，再接入 Alertmanager 或 Grafana 统一告警（见下方注释）。
+# 说明：规则在 Prometheus 内持续求值并进入 firing 状态，
+#       经 prometheus.yml 的 alerting 段推送至 Alertmanager（P1-9 告警出口）；
+#       通知渠道（webhook/邮件）在 deploy/alertmanager.yml 中配置。
 # ============================================================
 groups:
   - name: qinghe-mall-backend
@@ -55,10 +56,11 @@ groups:
           description: "堆内存使用率 {{ $value | humanizePercentage }} 超过 85%，持续 10 分钟，关注是否存在内存泄漏或需要扩容。"
 
 # ------------------------------------------------------------
-# 通知接入（可选，按需启用）：
-# 1) Alertmanager：在 docker-compose 增加 alertmanager 服务，
-#    并在 prometheus.yml 增加 alerting.alertmanagers 指向它；
-# 2) 或 Grafana 统一告警（Grafana 10 内置）：在
+# 通知接入（P1-9 已启用 Alertmanager 链路）：
+# 1) Prometheus → Alertmanager：prometheus.yml alerting 段已指向
+#    alertmanager:9093；通知渠道（webhook/邮件）在 deploy/alertmanager.yml
+#    中配置，替换占位 url 即可通知到人；
+# 2) 或 Grafana 统一告警（Grafana 10+ 内置）：在
 #    deploy/grafana/provisioning/alerting/ 下配置 contact_points + rules，
 #    可直接将上面这些 Prometheus 指标作为 Grafana 告警数据源推送到
 #    邮件 / 钉钉 / Webhook 等渠道。

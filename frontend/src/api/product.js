@@ -1,11 +1,11 @@
 import request from '../utils/request'
 
-// 商品分页查询：GET /api/product/page?pagination=&pageSize=&keyword=&brand=&sort=
+// 商品分页查询：GET /api/product/page?pageNum=&pageSize=&keyword=&brand=&sort=（P2-12 统一 pageNum）
 // sort: sales_desc(销量) | price_asc(价格↑) | price_desc(价格↓) | 空(默认上新)
-export function pageQuery(pagination, pageSize, params = {}) {
+export function pageQuery(pageNum, pageSize, params = {}) {
   return request.get('/product/page', {
     params: {
-      pagination,
+      pageNum,
       pageSize,
       keyword: params.keyword || undefined,
       brand: params.brand || undefined,

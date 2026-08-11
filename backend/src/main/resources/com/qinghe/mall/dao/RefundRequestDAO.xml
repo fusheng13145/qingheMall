@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.RefundRequestDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.RefundRequestDO">
+        <id column="id" property="id" jdbcType="VARCHAR"/>
+        <result column="order_number" property="orderNumber" jdbcType="VARCHAR"/>
+        <result column="user_id" property="userId" jdbcType="BIGINT"/>
+        <result column="type" property="type" jdbcType="VARCHAR"/>
+        <result column="reason" property="reason" jdbcType="VARCHAR"/>
+        <result column="status" property="status" jdbcType="VARCHAR"/>
+        <result column="previous_order_status" property="previousOrderStatus" jdbcType="VARCHAR"/>
+        <result column="review_comment" property="reviewComment" jdbcType="VARCHAR"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+        <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, order_number, user_id, type, reason, status, previous_order_status, review_comment,
+        gmt_created, gmt_modified
+    </sql>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.RefundRequestDO">
+        INSERT INTO refund_request (id, order_number, user_id, type, reason, status, previous_order_status,
+                                    review_comment, gmt_created, gmt_modified)
+        VALUES (#{id}, #{orderNumber}, #{userId}, #{type}, #{reason}, #{status}, #{previousOrderStatus},
+                #{reviewComment}, #{gmtCreated}, #{gmtModified})
+    </insert>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM refund_request
+        WHERE id = #{id}
+    </select>
+
+    <!-- 同一订单至多一条 PENDING：重复申请守卫 -->
+    <select id="findPendingByOrderNumber" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM refund_request
+        WHERE order_number = #{orderNumber} AND status = 'PENDING'
+        LIMIT 1
+    </select>
+
+    <select id="findByOrderNumber" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM refund_request
+        WHERE order_number = #{orderNumber}
+        ORDER BY gmt_created DESC
+    </select>
+
+    <select id="findByUserId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM refund_request
+        WHERE user_id = #{userId}
+        ORDER BY gmt_created DESC
+        LIMIT 100
+    </select>
+
+    <!-- CAS 审核：仅 PENDING 可流转，防并发重复审核 -->
+    <update id="reviewWithGuard">
+        UPDATE refund_request
+        SET status = #{targetStatus}, review_comment = #{reviewComment}, gmt_modified = NOW()
+        WHERE id = #{id} AND status = 'PENDING'
+    </update>
+
+    <delete id="deleteByOrderNumberForTest">
+        DELETE FROM refund_request WHERE order_number = #{orderNumber}
+    </delete>
+
+</mapper>

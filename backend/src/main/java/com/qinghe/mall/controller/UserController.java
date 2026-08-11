@@ -68,10 +68,13 @@ public class UserController {
 
     @GetMapping("/logout")
     public Result<Void> logout(HttpServletRequest request) {
-        request.getSession().removeAttribute("userId");
-        request.getSession().removeAttribute("userName");
-        request.getSession().removeAttribute("nickName");
-        request.getSession().removeAttribute("role");
+        // P2-10：整体失效会话（原仅清属性，会话 ID 仍可复用）。
+        // invalidate 会销毁服务端会话（Spring Session 下即删除 Redis 中的会话数据），
+        // 响应同时下发过期的 SESSION Cookie，客户端不再携带有效会话。
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
         return Result.success();
     }
 

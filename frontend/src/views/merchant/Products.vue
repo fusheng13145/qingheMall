@@ -79,7 +79,14 @@
           <label class="form-label">商品介绍</label>
           <textarea v-model="form.productIntro" class="form-input" rows="2" placeholder="商品介绍（可选）"></textarea>
           <label class="form-label">商品图片（URL，多个用空格分隔）</label>
-          <input v-model="form.productImgs" class="form-input" placeholder="http://... 第一张为缩略图" />
+          <div class="img-upload-row">
+            <input v-model="form.productImgs" class="form-input" placeholder="http://... 第一张为缩略图" />
+            <label class="btn-upload">
+              上传图片
+              <input type="file" accept="image/*" hidden @change="handleUpload" />
+            </label>
+            <span v-if="uploading" class="upload-tip">上传中...</span>
+          </div>
         </div>
 
         <div class="sku-header">
@@ -104,8 +111,10 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { toast, apiError } from '../../utils/toast'
 import { listMerchantProducts, saveMerchantProduct, toggleMerchantProduct } from '../../api/merchant'
 import { getProductDetails } from '../../api/product'
+import { uploadImage } from '../../api/file'
 
 const products = ref([])
 const detailsMap = reactive({})
@@ -120,7 +129,25 @@ const statusFilter = ref('')
 const modalOpen = ref(false)
 const editingId = ref('')
 const saving = ref(false)
+const uploading = ref(false)
 const form = reactive({ name: '', brand: '', price: null, productIntro: '', productImgs: '', details: [] })
+
+// P2-17：商家端图片上传——成功返回 /uploads/xxx URL，空格分隔追加到图片字段
+async function handleUpload(event) {
+  const file = event.target.files && event.target.files[0]
+  event.target.value = ''
+  if (!file) return
+  uploading.value = true
+  try {
+    const res = await uploadImage(file)
+    const url = res.data.url
+    form.productImgs = form.productImgs.trim() ? form.productImgs.trim() + ' ' + url : url
+  } catch (e) {
+    apiError(e, '上传失败')
+  } finally {
+    uploading.value = false
+  }
+}
 
 function firstImg(imgs) {
   if (!imgs) return ''
@@ -148,7 +175,7 @@ async function load(page) {
       detailsMap[p.id] = total
     }
   } catch (e) {
-    alert(e.message || '加载失败')
+    apiError(e, '加载失败')
   } finally {
     loading.value = false
   }
@@ -198,11 +225,11 @@ function closeModal() {
 
 async function save() {
   if (!form.name.trim()) {
-    alert('请填写商品名称')
+    toast.warning('请填写商品名称')
     return
   }
   if (!form.price || form.price <= 0) {
-    alert('请填写正确的参考价')
+    toast.warning('请填写正确的参考价')
     return
   }
   // P2-9：价格/库存须为有效数值（>0 / >=0），拦截空串与 0
@@ -210,12 +237,12 @@ async function save() {
     (s) => s.price != null && Number(s.price) > 0 && s.stock != null && Number(s.stock) >= 0
   )
   if (details.length === 0) {
-    alert('请至少填写一条完整的规格（价格>0、库存>=0）')
+    toast.warning('请至少填写一条完整的规格（价格>0、库存>=0）')
     return
   }
   if (form.details.some((s) => s.price != null && s.stock != null
     && (Number(s.price) <= 0 || Number(s.stock) < 0))) {
-    alert('规格价格必须大于 0，库存不能为负数')
+    toast.warning('规格价格必须大于 0，库存不能为负数')
     return
   }
   saving.value = true
@@ -230,11 +257,11 @@ async function save() {
       status: 'ON',
       details
     })
-    alert(editingId.value ? '保存成功' : '商品已上架')
+    toast.success(editingId.value ? '保存成功' : '商品已上架')
     modalOpen.value = false
     load(pageNum.value)
   } catch (e) {
-    alert(e.message || '保存失败')
+    apiError(e, '保存失败')
   } finally {
     saving.value = false
   }
@@ -247,7 +274,7 @@ async function toggle(p) {
     await toggleMerchantProduct(p.id, target)
     load(pageNum.value)
   } catch (e) {
-    alert(e.message || '操作失败')
+    apiError(e, '操作失败')
   }
 }
 
@@ -485,6 +512,41 @@ onMounted(() => load(1))
   color: var(--color-text);
   font-size: 14px;
   width: 100%;
+}
+
+/* P2-17：图片上传行 */
+.img-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.img-upload-row .form-input {
+  flex: 1;
+  width: auto;
+}
+
+.btn-upload {
+  flex-shrink: 0;
+  padding: 9px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: var(--color-primary-50);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-upload:hover {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.upload-tip {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
 }
 
 .sku-header {

@@ -1,9 +1,16 @@
 # ============================================================
 # 青禾商城 一键启动编排（M3-9 容器化）
 # 用法：docker compose up -d --build
-# 访问：前端 http://localhost:80（Nginx 托管 + 反代 /api）
-#       后端 http://localhost:8080/api
+# 访问：前端 http://localhost:80（Nginx 托管 + 反代 /api）；启用 HTTPS 见下
+#       后端 http://localhost:8080/api（仅本机 127.0.0.1 暴露）
 # 默认账号：admin / 123456
+#
+# P1-4 安全加固（2026-08-11）：
+#   ① Redis 启用 requirepass 认证（原裸奔）；
+#   ② 中间件端口收敛：MySQL/Redis 不再映射宿主，仅内网可达；
+#      后端/Prometheus/Grafana 仅绑定 127.0.0.1；对外仅 80/443；
+#   ③ 全服务补 restart: unless-stopped；
+#   ④ 前端支持可选 HTTPS（SSL_ENABLED=true + 挂载 deploy/ssl 证书）。
 # ============================================================
 services:
   mysql:
@@ -15,8 +22,9 @@ services:
       MYSQL_DATABASE: qinghedb
       TZ: Asia/Shanghai
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci
-    ports:
-      - "3306:3306"
+    # P1-4：不再向宿主暴露 3306，仅 compose 内网可达；如需本机直连可临时解开注释
+    # ports:
+    #   - "127.0.0.1:3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       # 首次启动自动执行初始化脚本（建库建表 + 种子数据 + admin 账号）
@@ -26,17 +34,24 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     container_name: qinghe-redis
-    ports:
-      - "6379:6379"
+    # P1-4：启用 requirepass 认证（原无密码裸奔）；口令与 backend REDIS_PASSWORD 同源
+    command: redis-server --requirepass ${REDIS_PASSWORD:-QhMallDev2026!}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-QhMallDev2026!}
+    # P1-4：不再向宿主暴露 6379，仅 compose 内网可达
+    # ports:
+    #   - "127.0.0.1:6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   backend:
     build: ./backend
@@ -49,10 +64,14 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-QhMallDev2026!}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # P1-4：与 redis requirepass 同源，保证认证一致
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-QhMallDev2026!}
       UPLOAD_DIR: /app/upload
+      # 会话 Cookie Secure 标记：默认 HTTP 部署需 false 才能下发 Cookie；启用 HTTPS 时置 true
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    # P1-4：仅绑定 127.0.0.1，避免 8080 直接对外（对外流量一律走前端 nginx 反代）
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - upload-data:/app/upload
     depends_on:
@@ -60,38 +79,61 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
 
   frontend:
     build: ./frontend
     container_name: qinghe-frontend
     ports:
       - "80:80"
+      # P1-3：启用 HTTPS 需 443（配合 SSL_ENABLED=true 与下方证书挂载）
+      - "443:443"
+    environment:
+      # P1-3：true 时切换 HTTPS（需挂载证书，缺证书将 fail-closed 拒绝启动）
+      SSL_ENABLED: ${SSL_ENABLED:-false}
+    volumes:
+      # P1-3：证书目录（fullchain.pem + privkey.pem），仅 SSL_ENABLED=true 时需要
+      - ./deploy/ssl:/etc/nginx/ssl:ro
     depends_on:
       - backend
+    restart: unless-stopped
 
   # ============ 监控（P2-2，可选启动）============
   # 指标端点：http://localhost:8080/actuator/prometheus
-  # Prometheus：http://localhost:9090 | Grafana：http://localhost:3000
+  # Prometheus：http://localhost:9090 | Grafana：http://localhost:3000（均仅 127.0.0.1）
   # ⚠️ Grafana 口令必须通过 .env 的 GRAFANA_ADMIN_PASSWORD 注入（P1-19，禁止默认 admin/admin）
   prometheus:
     # P1-19：v2.49.1 → v2.53.3（旧版已过维护期）
     image: prom/prometheus:v2.53.3
     container_name: qinghe-prometheus
+    # P1-4：仅绑定 127.0.0.1
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./deploy/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
       - prometheus-data:/prometheus
     depends_on:
       - backend
+    restart: unless-stopped
+
+  alertmanager:
+    # P1-9：告警出口（原缺失）。接收 Prometheus 告警并路由到通知渠道（webhook/邮件等）
+    image: prom/alertmanager:v0.27.0
+    container_name: qinghe-alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./deploy/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    restart: unless-stopped
 
   grafana:
     # P1-19：10.2.3 → 11.3.0（旧版含已披露 CVE）
     image: grafana/grafana:11.3.0
     container_name: qinghe-grafana
+    # P1-4：仅绑定 127.0.0.1
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       # P1-19：口令必须显式注入，缺省直接启动失败，禁止弱口令
@@ -104,6 +146,7 @@ services:
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - prometheus
+    restart: unless-stopped
 
 volumes:
   mysql-data:

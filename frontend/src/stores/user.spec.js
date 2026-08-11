@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useUserStore } from './user'
+import { useCartStore } from './cart'
 
 vi.mock('../api/user', () => ({
   loginApi: vi.fn(),
@@ -62,6 +63,19 @@ describe('user store 登录态管理', () => {
     await store.login('alice', 'pwd')
     await store.logout()
     expect(store.isLoggedIn).toBe(false)
+  })
+
+  it('登出连带清空购物车本地状态（P2-15 防跨用户残留）', async () => {
+    loginApi.mockResolvedValue({ data: { id: 1, userName: 'alice', role: 'USER' } })
+    logoutApi.mockResolvedValue({})
+    const store = useUserStore()
+    const cartStore = useCartStore()
+    await store.login('alice', 'pwd')
+    cartStore.items = [{ id: 1, selected: true }]
+    cartStore.count = 1
+    await store.logout()
+    expect(cartStore.items).toHaveLength(0)
+    expect(cartStore.count).toBe(0)
   })
 
   it('isMerchant 依角色判定', async () => {

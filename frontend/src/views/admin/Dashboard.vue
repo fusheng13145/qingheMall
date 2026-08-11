@@ -144,9 +144,11 @@ const maxSales = ref(0)
 onMounted(async () => {
   try {
     const [statsRes, ordersRes] = await Promise.all([getDashboard(), getOrderList()])
+    // getOrderList 返回 Paging<Order>，列表在 data 字段（此前误把 Paging 当数组 slice，最近订单恒为空）
+    const orderPaging = ordersRes.data || {}
     dashboard.value = {
       ...statsRes.data,
-      recentOrders: (ordersRes.data || []).slice(0, 5)
+      recentOrders: (orderPaging.data || []).slice(0, 5)
     }
   } catch (e) {
     console.error('加载仪表盘数据失败:', e)

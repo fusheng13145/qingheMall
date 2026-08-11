@@ -44,6 +44,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { toast, apiError } from '../utils/toast'
 import { listCoupons, claimCoupon, myCoupons } from '../api/coupon'
 import { couponRuleText } from '../utils/coupon'
 
@@ -77,7 +78,7 @@ async function load() {
       claimedSet.value = set
     } catch (e) { /* 忽略 */ }
   } catch (e) {
-    alert('加载优惠券失败：' + (e.message || '请稍后重试'))
+    apiError(e, '加载优惠券失败')
   } finally {
     loading.value = false
   }
@@ -88,10 +89,10 @@ function handleClaim(c) {
     .then(() => {
       claimedSet.value = new Set(claimedSet.value).add(c.id)
       c.issued = (c.issued || 0) + 1
-      alert('领取成功，可在「我的优惠券」中查看')
+      toast.success('领取成功，可在「我的优惠券」中查看')
     })
     .catch(e => {
-      alert('领取失败：' + (e.message || '请稍后重试'))
+      apiError(e, '领取失败')
     })
 }
 

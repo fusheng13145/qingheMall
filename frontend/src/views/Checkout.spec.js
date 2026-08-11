@@ -1,19 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import Checkout from './Checkout.vue'
+import { toasts } from '../utils/toast'
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }))
-const { listCart, clearSelectedCart } = vi.hoisted(() => ({
-  listCart: vi.fn(),
-  clearSelectedCart: vi.fn()
-}))
 const { batchAddOrders } = vi.hoisted(() => ({ batchAddOrders: vi.fn() }))
 const { getDefaultAddress } = vi.hoisted(() => ({ getDefaultAddress: vi.fn() }))
 const { availableCoupons } = vi.hoisted(() => ({ availableCoupons: vi.fn() }))
-const { mockCartStore } = vi.hoisted(() => ({ mockCartStore: { refreshCount: vi.fn() } }))
+// P2-15：结算页数据源改为购物车 store，mock 需提供 selectedItems/fetchItems/clearSelected
+const { mockCartStore } = vi.hoisted(() => ({
+  mockCartStore: {
+    selectedItems: [],
+    fetchItems: vi.fn(),
+    clearSelected: vi.fn()
+  }
+}))
 
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
-vi.mock('../api/cart', () => ({ listCart, clearSelectedCart }))
 vi.mock('../api/order', () => ({ batchAddOrders }))
 vi.mock('../api/address', () => ({ getDefaultAddress }))
 vi.mock('../api/coupon', () => ({ availableCoupons }))
@@ -38,13 +41,20 @@ function mountPage() {
 beforeEach(() => {
   vi.clearAllMocks()
   push.mockClear()
-  mockCartStore.refreshCount.mockClear()
-  global.alert = vi.fn()
+  mockCartStore.selectedItems = []
+  mockCartStore.fetchItems.mockResolvedValue()
+  mockCartStore.clearSelected.mockResolvedValue()
+  toasts.splice(0, toasts.length)
 })
 
+/** 断言 toast 队列中存在指定类型与文案 */
+function expectToast(type, message) {
+  expect(toasts.some(t => t.type === type && t.message === message)).toBe(true)
+}
+
 describe('Checkout 结算页', () => {
-  it('加载已选商品并自动填充默认地址', async () => {
-    listCart.mockResolvedValue({ data: [makeItem()] })
+  it('从 store 加载已选商品并自动填充默认地址', async () => {
+    mockCartStore.selectedItems = [makeItem()]
     getDefaultAddress.mockResolvedValue({
       data: { receiverName: '张三', receiverPhone: '13800000000', receiverAddress: '北京市朝阳区' }
     })
@@ -53,12 +63,13 @@ describe('Checkout 结算页', () => {
     const wrapper = mountPage()
     await flushPromises()
 
+    expect(mockCartStore.fetchItems).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('Nike Air')
     expect(wrapper.find('input[placeholder="请输入收货人姓名"]').element.value).toBe('张三')
   })
 
   it('单笔订单拉取可用券', async () => {
-    listCart.mockResolvedValue({ data: [makeItem()] })
+    mockCartStore.selectedItems = [makeItem()]
     getDefaultAddress.mockResolvedValue({ data: null })
     availableCoupons.mockResolvedValue({ data: [{ id: 'c1', couponName: '满100减20', threshold: 100, amount: 20 }] })
 
@@ -70,7 +81,7 @@ describe('Checkout 结算页', () => {
   })
 
   it('多商品不拉取优惠券', async () => {
-    listCart.mockResolvedValue({ data: [makeItem(), makeItem({ id: 2, productDetailId: 'pd2' })] })
+    mockCartStore.selectedItems = [makeItem(), makeItem({ id: 2, productDetailId: 'pd2' })]
     getDefaultAddress.mockResolvedValue({ data: null })
 
     mountPage()
@@ -80,7 +91,7 @@ describe('Checkout 结算页', () => {
   })
 
   it('校验失败：电话格式不正确', async () => {
-    listCart.mockResolvedValue({ data: [makeItem()] })
+    mockCartStore.selectedItems = [makeItem()]
     getDefaultAddress.mockResolvedValue({ data: null })
 
     const wrapper = mountPage()
@@ -91,18 +102,17 @@ describe('Checkout 结算页', () => {
     await wrapper.find('textarea').setValue('北京市')
     await wrapper.find('.btn-submit').trigger('click')
 
-    expect(global.alert).toHaveBeenCalledWith('联系电话格式不正确')
+    expectToast('warning', '联系电话格式不正确')
     expect(batchAddOrders).not.toHaveBeenCalled()
   })
 
-  it('提交成功：下单 + 清空已选 + 刷新角标 + 跳转订单页', async () => {
-    listCart.mockResolvedValue({ data: [makeItem()] })
+  it('提交成功：下单 + store 清空已选 + 跳转订单页', async () => {
+    mockCartStore.selectedItems = [makeItem()]
     getDefaultAddress.mockResolvedValue({
       data: { receiverName: '张三', receiverPhone: '13800000000', receiverAddress: '北京市朝阳区' }
     })
     availableCoupons.mockResolvedValue({ data: [] })
     batchAddOrders.mockResolvedValue({ data: [] })
-    clearSelectedCart.mockResolvedValue({})
 
     const wrapper = mountPage()
     await flushPromises()
@@ -111,13 +121,12 @@ describe('Checkout 结算页', () => {
     await flushPromises()
 
     expect(batchAddOrders).toHaveBeenCalledTimes(1)
-    expect(clearSelectedCart).toHaveBeenCalled()
-    expect(mockCartStore.refreshCount).toHaveBeenCalled()
+    expect(mockCartStore.clearSelected).toHaveBeenCalledTimes(1)
     expect(push).toHaveBeenCalledWith('/orders')
   })
 
-  it('下单失败 alert 提示', async () => {
-    listCart.mockResolvedValue({ data: [makeItem()] })
+  it('下单失败 toast 提示', async () => {
+    mockCartStore.selectedItems = [makeItem()]
     getDefaultAddress.mockResolvedValue({
       data: { receiverName: '张三', receiverPhone: '13800000000', receiverAddress: '北京市朝阳区' }
     })
@@ -129,11 +138,11 @@ describe('Checkout 结算页', () => {
     await wrapper.find('.btn-submit').trigger('click')
     await flushPromises()
 
-    expect(global.alert).toHaveBeenCalledWith('下单失败：库存不足')
+    expectToast('error', '下单失败：库存不足')
   })
 
   it('空购物车提交提示没有可提交商品', async () => {
-    listCart.mockResolvedValue({ data: [] })
+    mockCartStore.selectedItems = []
     getDefaultAddress.mockResolvedValue({
       data: { receiverName: '张三', receiverPhone: '13800000000', receiverAddress: '北京市朝阳区' }
     })
@@ -143,6 +152,6 @@ describe('Checkout 结算页', () => {
 
     await wrapper.find('.btn-submit').trigger('click')
 
-    expect(global.alert).toHaveBeenCalledWith('没有可提交的商品')
+    expectToast('warning', '没有可提交的商品')
   })
 })

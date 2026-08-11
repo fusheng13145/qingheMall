@@ -1,5 +1,8 @@
 package com.qinghe.mall.model;
 
+import java.util.Arrays;
+import java.util.List;
+
 public enum OrderStatus {
 
     WAIT_BUYER_PAY,
@@ -25,5 +28,18 @@ public enum OrderStatus {
             }
         }
         return false;
+    }
+
+    /**
+     * P1-7（2026-08-11）：已付营收统一口径——"已付款且未退款"的订单状态集合。
+     * 订单支付后沿 已付款→已发货→已完成 流转，三个状态都表示真实成交；
+     * 退款中/已退款/已关闭不计入营收。管理端看板、销售日报、商家统计一律以此为准，
+     * 避免此前「看板只算已付款、商家端算三状态」导致的口径不一致。
+     */
+    public static List<String> paidRevenueStatuses() {
+        return Arrays.asList(
+                TRADE_PAID_SUCCESS.name(),
+                TRADE_SHIPPED.name(),
+                TRADE_COMPLETED.name());
     }
 }

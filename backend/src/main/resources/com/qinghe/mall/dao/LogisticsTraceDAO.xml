@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.LogisticsTraceDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.LogisticsTraceDO">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="order_number" property="orderNumber" jdbcType="VARCHAR"/>
+        <result column="description" property="description" jdbcType="VARCHAR"/>
+        <result column="trace_time" property="traceTime" jdbcType="TIMESTAMP"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, order_number, description, trace_time, gmt_created
+    </sql>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.LogisticsTraceDO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO logistics_trace (order_number, description, trace_time, gmt_created)
+        VALUES (#{orderNumber}, #{description}, #{traceTime}, #{gmtCreated})
+    </insert>
+
+    <!-- 时间正序返回，前端时间线从早到晚渲染 -->
+    <select id="findByOrderNumber" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM logistics_trace
+        WHERE order_number = #{orderNumber}
+        ORDER BY trace_time ASC, id ASC
+    </select>
+
+    <delete id="deleteByOrderNumberForTest">
+        DELETE FROM logistics_trace WHERE order_number = #{orderNumber}
+    </delete>
+
+</mapper>

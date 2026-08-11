@@ -212,13 +212,8 @@ class OrderServiceImplTest {
         verify(productDetailService, never()).increaseStock(anyString(), anyInt());
     }
 
-    @Test
-    void updateOrderStatus_shouldReturnResult() {
-        when(orderDAO.updateStatus("QH001", OrderStatus.TRADE_CLOSED.name())).thenReturn(1);
-        assertTrue(orderService.updateOrderStatus("QH001", OrderStatus.TRADE_CLOSED.name()));
-        when(orderDAO.updateStatus("QH001", OrderStatus.TRADE_CLOSED.name())).thenReturn(0);
-        assertFalse(orderService.updateOrderStatus("QH001", OrderStatus.TRADE_CLOSED.name()));
-    }
+    // 旧用例（直接透传 updateStatus）已随 P1-6 状态机改造移除；
+    // updateOrderStatus 的白名单/CAS/终态覆盖见 OrderServiceImplAdditionalTest。
 
     // ========== 退款 / 发货状态机（M6） ==========
 

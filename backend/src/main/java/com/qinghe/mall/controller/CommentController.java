@@ -7,6 +7,7 @@ import com.qinghe.mall.model.Paging;
 import com.qinghe.mall.model.Result;
 import com.qinghe.mall.service.CommentService;
 import com.qinghe.mall.service.OrderService;
+import com.qinghe.mall.util.PageParams;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,13 +52,16 @@ public class CommentController {
     }
 
     /**
-     * 商品评价列表（分页）：GET /api/comment/product?productId=&pagination=&pageSize=
+     * 商品评价列表（分页）：GET /api/comment/product?productId=&pageNum=&pageSize=
+     * （P2-12：页码统一 pageNum，旧参数 pagination 仍兼容）
      */
     @GetMapping("/product")
     public Result<Paging<Comment>> listByProduct(@RequestParam("productId") String productId,
-                                                 @RequestParam(value = "pagination", defaultValue = "1") Integer pagination,
+                                                 @RequestParam(value = "pageNum", required = false) Integer pageNum,
+                                                 @RequestParam(value = "pagination", required = false) Integer legacyPagination,
                                                  @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize) {
-        return Result.success(commentService.listByProduct(productId, pagination, pageSize));
+        int page = PageParams.resolve(pageNum, legacyPagination);
+        return Result.success(commentService.listByProduct(productId, page, pageSize));
     }
 
     /**

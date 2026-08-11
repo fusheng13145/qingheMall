@@ -1,5 +1,6 @@
 package com.qinghe.mall.service.impl;
 
+import com.qinghe.mall.exception.BusinessException;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import com.qinghe.mall.dao.MerchantDAO;
@@ -29,7 +30,7 @@ public class MerchantServiceImpl implements MerchantService {
     @Transactional(rollbackFor = Exception.class)
     public User registerMerchant(String userName, String pwd, String shopName, String shopLogo, String shopDesc) {
         if (StringUtils.isBlank(shopName)) {
-            throw new RuntimeException("请填写店铺名称");
+            throw new BusinessException("请填写店铺名称");
         }
         User user = userService.register(userName, pwd, UserDO.ROLE_MERCHANT);
         apply(user.getId(), shopName, shopLogo, shopDesc);
@@ -40,14 +41,14 @@ public class MerchantServiceImpl implements MerchantService {
     @Transactional(rollbackFor = Exception.class)
     public MerchantDO apply(Long userId, String shopName, String shopLogo, String shopDesc) {
         if (userId == null) {
-            throw new RuntimeException("未登录");
+            throw new BusinessException("未登录");
         }
         MerchantDO exist = merchantDAO.findByUserId(userId);
         if (exist != null) {
             return exist;
         }
         if (StringUtils.isBlank(shopName)) {
-            throw new RuntimeException("请填写店铺名称");
+            throw new BusinessException("请填写店铺名称");
         }
         MerchantDO merchant = new MerchantDO();
         merchant.setUserId(userId);
@@ -95,7 +96,7 @@ public class MerchantServiceImpl implements MerchantService {
     public MerchantDO audit(Long merchantId, boolean approve, String reason) {
         MerchantDO merchant = getById(merchantId);
         if (merchant == null) {
-            throw new RuntimeException("商家不存在");
+            throw new BusinessException("商家不存在");
         }
         if (approve) {
             merchantDAO.updateStatus(merchantId, MerchantDO.STATUS_ACTIVE, null);
@@ -103,7 +104,7 @@ public class MerchantServiceImpl implements MerchantService {
             userService.updateRole(merchant.getUserId(), UserDO.ROLE_MERCHANT);
         } else {
             if (StringUtils.isBlank(reason)) {
-                throw new RuntimeException("驳回必须填写原因");
+                throw new BusinessException("驳回必须填写原因");
             }
             merchantDAO.updateStatus(merchantId, MerchantDO.STATUS_REJECTED, reason.trim());
         }

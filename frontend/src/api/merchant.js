@@ -39,14 +39,34 @@ export function listMerchantOrders(pageNum = 1, pageSize = 10, status = '') {
   return request.get('/merchant/orders', { params: { pageNum, pageSize, status } })
 }
 
-// 发货：POST /api/merchant/order/ship?orderNumber=
-export function merchantShip(orderNumber) {
-  return request.post('/merchant/order/ship', null, { params: { orderNumber } })
+// 发货：POST /api/merchant/order/ship?orderNumber=&company=&trackingNumber=
+// P2-18：携带承运商与运单号时同步建立物流档案；缺省时为纯状态发货（向后兼容）
+export function merchantShip(orderNumber, company, trackingNumber) {
+  return request.post('/merchant/order/ship', null, {
+    params: {
+      orderNumber,
+      ...(company ? { company } : {}),
+      ...(trackingNumber ? { trackingNumber } : {})
+    }
+  })
 }
 
-// 处理退款：POST /api/merchant/order/refund/process?orderNumber=&approve=
-export function merchantProcessRefund(orderNumber, approve = true) {
-  return request.post('/merchant/order/refund/process', null, { params: { orderNumber, approve } })
+// 推进物流状态：POST /api/merchant/logistics/advance?orderNumber=
+// SHIPPED→IN_TRANSIT→DELIVERING→SIGNED，每次追加一条轨迹；返回最新 Logistics
+export function merchantAdvanceLogistics(orderNumber) {
+  return request.post('/merchant/logistics/advance', null, { params: { orderNumber } })
+}
+
+// 处理退款：POST /api/merchant/order/refund/process?orderNumber=&approve=&comment=
+// P2-18：comment 为审核意见（驳回时向用户展示）
+export function merchantProcessRefund(orderNumber, approve = true, comment) {
+  return request.post('/merchant/order/refund/process', null, {
+    params: {
+      orderNumber,
+      approve,
+      ...(comment ? { comment } : {})
+    }
+  })
 }
 
 // 店铺统计：GET /api/merchant/stats

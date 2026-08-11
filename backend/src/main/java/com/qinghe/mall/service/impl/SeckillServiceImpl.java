@@ -1,5 +1,6 @@
 package com.qinghe.mall.service.impl;
 
+import com.qinghe.mall.exception.BusinessException;
 import com.qinghe.mall.dao.OrderDAO;
 import com.qinghe.mall.dao.SeckillActivityDAO;
 import com.qinghe.mall.dao.SeckillOrderDAO;
@@ -86,23 +87,23 @@ public class SeckillServiceImpl implements SeckillService {
     @Override
     public SeckillActivityDO createActivity(SeckillActivityDO activity) {
         if (activity == null || activity.getProductDetailId() == null) {
-            throw new RuntimeException("活动绑定的商品规格不能为空");
+            throw new BusinessException("活动绑定的商品规格不能为空");
         }
         ProductDetail detail = productDetailService.findById(activity.getProductDetailId());
         if (detail == null) {
-            throw new RuntimeException("商品规格不存在");
+            throw new BusinessException("商品规格不存在");
         }
         if (activity.getSeckillPrice() == null || activity.getSeckillPrice().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new RuntimeException("秒杀价必须大于 0");
+            throw new BusinessException("秒杀价必须大于 0");
         }
         if (activity.getTotalStock() == null || activity.getTotalStock() <= 0) {
-            throw new RuntimeException("活动库存必须大于 0");
+            throw new BusinessException("活动库存必须大于 0");
         }
         if (activity.getStartTime() == null || activity.getEndTime() == null) {
-            throw new RuntimeException("活动起止时间不能为空");
+            throw new BusinessException("活动起止时间不能为空");
         }
         if (activity.getEndTime().before(activity.getStartTime())) {
-            throw new RuntimeException("活动结束时间必须晚于开始时间");
+            throw new BusinessException("活动结束时间必须晚于开始时间");
         }
         activity.setId(UUIDUtils.uuid());
         // 初始剩余库存 = 总库存
@@ -147,7 +148,7 @@ public class SeckillServiceImpl implements SeckillService {
     public SeckillActivityDO getActivity(String id) {
         SeckillActivityDO activity = activityDAO.findById(id);
         if (activity == null) {
-            throw new RuntimeException("活动不存在");
+            throw new BusinessException("活动不存在");
         }
         return activity;
     }
@@ -155,10 +156,10 @@ public class SeckillServiceImpl implements SeckillService {
     @Override
     public void toggle(String activityId, String status) {
         if (activityId == null || activityId.isEmpty()) {
-            throw new RuntimeException("活动ID不能为空");
+            throw new BusinessException("活动ID不能为空");
         }
         if (!"ONGOING".equals(status) && !"CLOSED".equals(status) && !"ENDED".equals(status)) {
-            throw new RuntimeException("非法的活动状态");
+            throw new BusinessException("非法的活动状态");
         }
         activityDAO.updateStatus(activityId, status);
         // P1-20：切换为进行中时，以数据库权威库存重建 Redis 闸门
@@ -174,23 +175,23 @@ public class SeckillServiceImpl implements SeckillService {
     public String createOrder(String activityId, Long userId, int quantity,
                               String receiverName, String receiverPhone, String receiverAddress) {
         if (userId == null) {
-            throw new RuntimeException("用户未登录");
+            throw new BusinessException("用户未登录");
         }
         final int qty = quantity <= 0 ? 1 : quantity;
         // 单次抢购数量上限（P2-7）
         if (qty > 10) {
-            throw new RuntimeException("单次最多抢购 10 件");
+            throw new BusinessException("单次最多抢购 10 件");
         }
         SeckillActivityDO activity = activityDAO.findById(activityId);
         if (activity == null) {
-            throw new RuntimeException("活动不存在");
+            throw new BusinessException("活动不存在");
         }
         if (!"ONGOING".equals(activity.getStatus())) {
-            throw new RuntimeException("活动未开始或已结束");
+            throw new BusinessException("活动未开始或已结束");
         }
         Date now = new Date();
         if (now.before(activity.getStartTime()) || now.after(activity.getEndTime())) {
-            throw new RuntimeException("活动未开始或已结束");
+            throw new BusinessException("活动未开始或已结束");
         }
 
         // P1-20：Redis 库存闸门（原子预扣，降低 MySQL 行锁竞争）。
@@ -213,7 +214,7 @@ public class SeckillServiceImpl implements SeckillService {
         try {
             locked = userLock.tryLock(2, 5, java.util.concurrent.TimeUnit.SECONDS);
             if (!locked) {
-                throw new RuntimeException("请勿重复抢购");
+                throw new BusinessException("请勿重复抢购");
             }
             // Redis 前置预扣：原子 DECR，<0 即已抢光（并发安全，无行锁竞争）
             if (redisGate) {
@@ -231,7 +232,7 @@ public class SeckillServiceImpl implements SeckillService {
                     } catch (Exception ignored) {
                         // 补偿失败不影响业务拒绝
                     }
-                    throw new RuntimeException("已抢光");
+                    throw new BusinessException("已抢光");
                 }
             }
             // 事务内：活动库存 CAS 预扣 → 商品库存 CAS 扣减 → 普通订单插入 → 流水 → 秒杀订单插入
@@ -242,16 +243,16 @@ public class SeckillServiceImpl implements SeckillService {
                     // 1) 活动库存 CAS 预扣（权威扣减）
                     int aff = activityDAO.decreaseRemainStock(activityId, qty);
                     if (aff <= 0) {
-                        throw new RuntimeException("已抢光");
+                        throw new BusinessException("已抢光");
                     }
                     // 2) 商品 SKU 库存 CAS 扣减（二次校验）
                     ProductDetail before = productDetailService.findById(activity.getProductDetailId());
                     if (before == null) {
-                        throw new RuntimeException("商品规格不存在");
+                        throw new BusinessException("商品规格不存在");
                     }
                     boolean decreased = productDetailService.decreaseStock(activity.getProductDetailId(), qty);
                     if (!decreased) {
-                        throw new RuntimeException("库存不足");
+                        throw new BusinessException("库存不足");
                     }
                     ProductDetail after = productDetailService.findById(activity.getProductDetailId());
 
@@ -298,7 +299,7 @@ public class SeckillServiceImpl implements SeckillService {
                     try {
                         seckillOrderDAO.insert(so);
                     } catch (DuplicateKeyException e) {
-                        throw new RuntimeException("您已参与过该活动");
+                        throw new BusinessException("您已参与过该活动");
                     }
                     return no;
                 });
@@ -315,7 +316,7 @@ public class SeckillServiceImpl implements SeckillService {
             return orderNumber;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("抢购被中断", e);
+            throw new BusinessException("抢购被中断", e);
         } finally {
             if (locked && userLock.isHeldByCurrentThread()) {
                 userLock.unlock();

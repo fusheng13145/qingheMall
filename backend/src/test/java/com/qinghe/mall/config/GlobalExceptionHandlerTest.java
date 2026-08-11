@@ -1,5 +1,7 @@
 package com.qinghe.mall.config;
 
+import com.qinghe.mall.exception.AuthException;
+import com.qinghe.mall.exception.BusinessException;
 import com.qinghe.mall.exception.RateLimitException;
 import com.qinghe.mall.model.Result;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,7 +16,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 全局异常处理语义测试（P2-4 补齐：原零覆盖）。
  * 验证各异常类型到 HTTP 语义 code 的映射：
- * 业务 RuntimeException→500、IllegalArgumentException→400、
+ * BusinessException→500 且透出 message、未预期 RuntimeException→500 脱敏文案（P2-11）、
+ * AuthException→401/403（P1-8）、IllegalArgumentException→400、
  * 限流→429、参数缺失/类型不匹配/请求体不可读→400、未知异常→500。
  */
 class GlobalExceptionHandlerTest {
@@ -27,11 +30,31 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    @DisplayName("业务异常透出 message 且 code=500")
-    void runtimeExceptionMapsTo500() {
-        Result<Void> result = handler.handleRuntimeException(new RuntimeException("库存不足"));
+    @DisplayName("业务异常 BusinessException 透出 message 且 code=500")
+    void businessExceptionPassesMessage() {
+        Result<Void> result = handler.handleBusinessException(new BusinessException("库存不足"));
         assertThat(result.getCode()).isEqualTo(500);
         assertThat(result.getMessage()).isEqualTo("库存不足");
+    }
+
+    @Test
+    @DisplayName("未预期 RuntimeException 脱敏：不透出原始 message（P2-11）")
+    void runtimeExceptionSanitizedTo500() {
+        Result<Void> result = handler.handleRuntimeException(
+                new RuntimeException("SQL syntax error near 'DROP TABLE user'"));
+        assertThat(result.getCode()).isEqualTo(500);
+        assertThat(result.getMessage()).isEqualTo("操作失败，请稍后重试");
+        assertThat(result.getMessage()).doesNotContain("SQL");
+    }
+
+    @Test
+    @DisplayName("鉴权异常映射 401/403（P1-8）")
+    void authExceptionMapsToRealCode() {
+        Result<Void> unauthorized = handler.handleAuth(AuthException.unauthorized("未登录"));
+        assertThat(unauthorized.getCode()).isEqualTo(401);
+        Result<Void> forbidden = handler.handleAuth(AuthException.forbidden("无商家权限"));
+        assertThat(forbidden.getCode()).isEqualTo(403);
+        assertThat(forbidden.getMessage()).isEqualTo("无商家权限");
     }
 
     @Test

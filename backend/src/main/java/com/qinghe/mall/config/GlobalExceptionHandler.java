@@ -1,5 +1,7 @@
 package com.qinghe.mall.config;
 
+import com.qinghe.mall.exception.AuthException;
+import com.qinghe.mall.exception.BusinessException;
 import com.qinghe.mall.exception.RateLimitException;
 import com.qinghe.mall.model.Result;
 import org.slf4j.Logger;
@@ -14,21 +16,37 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  * 全局异常处理（M3-7）。
  *
  * 统一将异常转换为 Result<T> 结构，与业务失败（Result.fail）保持同构：
- * - 业务异常 RuntimeException：code 500 + message
+ * - 鉴权异常 AuthException：code 401/403 + message（P1-8）
+ * - 业务异常 BusinessException：code 500 + message（有意抛出，消息可展示给用户）
  * - 限流异常 RateLimitException：code 429 + 提示（P2-3）
  * - 参数类异常（缺失/类型不匹配/JSON 不可读）：code 400 + 友好提示
- * - 未预期异常：code 500 + 通用提示（日志记录完整堆栈）
+ * - 未预期 RuntimeException / Exception：code 500 + 通用提示（P2-11 脱敏，
+ *   真实细节仅进日志，不向前端泄露 SQL/类名/堆栈等内部信息）
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(AuthException.class)
+    public Result<Void> handleAuth(AuthException e) {
+        // P1-8：鉴权/授权失败按真实语义返回 401/403，不再被 RuntimeException 兜底成 500
+        return Result.fail(e.getCode(), e.getMessage());
+    }
+
+    @ExceptionHandler(BusinessException.class)
+    public Result<Void> handleBusinessException(BusinessException e) {
+        // 业务异常：message 是有意写给用户的提示，可安全透出；记录日志便于排查（P2-4）
+        log.warn("业务异常: {}", e.getMessage());
+        return Result.fail(e.getMessage());
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public Result<Void> handleRuntimeException(RuntimeException e) {
-        // 业务异常：透出 message 给前端（业务提示依赖该语义），同时记录日志便于排查（P2-4）
-        log.warn("业务异常: {}", e.getMessage(), e);
-        return Result.fail(e.getMessage());
+        // P2-11：未预期运行时异常不再把 getMessage() 透出前端（可能含 SQL/内部细节），
+        // 完整堆栈仅记录到日志，前端统一看到脱敏文案
+        log.error("未预期运行时异常", e);
+        return Result.fail(500, "操作失败，请稍后重试");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

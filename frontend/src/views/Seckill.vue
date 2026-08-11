@@ -92,6 +92,7 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { toast, apiError } from '../utils/toast'
 import { useRouter } from 'vue-router'
 import { listSeckillActivities, createSeckillOrder } from '../api/seckill'
 import { getDefaultAddress } from '../api/address'
@@ -158,7 +159,7 @@ async function load() {
     const res = await listSeckillActivities()
     activities.value = res.data || []
   } catch (e) {
-    alert('加载秒杀活动失败：' + (e.message || '请稍后重试'))
+    apiError(e, '加载秒杀活动失败')
   } finally {
     loading.value = false
   }
@@ -199,7 +200,7 @@ async function handleGrab() {
       // 忽略：无默认地址仍可继续，但下单后需补地址
     }
     if (!receiverName) {
-      alert('请先在「个人中心」设置默认收货地址后再抢购')
+      toast.warning('请先在「个人中心」设置默认收货地址后再抢购')
       router.push('/profile')
       return
     }
@@ -212,7 +213,7 @@ async function handleGrab() {
     closeDetail()
     router.push({ path: '/pay', query: { orderNumber } })
   } catch (e) {
-    alert('抢购失败：' + (e.message || '请稍后重试'))
+    apiError(e, '抢购失败')
   } finally {
     grabbing.value = false
   }

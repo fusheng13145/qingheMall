@@ -3,6 +3,7 @@ package com.qinghe.mall.controller;
 import com.qinghe.mall.model.*;
 import com.qinghe.mall.service.*;
 import com.qinghe.mall.dataobject.CouponDO;
+import com.qinghe.mall.util.PageParams;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,6 +20,8 @@ public class AdminController {
     @Autowired private CouponService couponService;
     @Autowired private com.qinghe.mall.service.SeckillService seckillService;
     @Autowired private com.qinghe.mall.service.MerchantService merchantService;
+    @Autowired private com.qinghe.mall.service.LogisticsService logisticsService;
+    @Autowired private com.qinghe.mall.service.RefundService refundService;
 
     // 检查管理员权限的私有方法
     private boolean checkAdmin(HttpServletRequest request) {
@@ -37,7 +40,8 @@ public class AdminController {
         stats.put("productCount", productService.queryPage(1, 1, null, null, null).getTotalCount());
         stats.put("orderCount", orderService.countAll());
         stats.put("userCount", userService.countAll());
-        stats.put("totalRevenue", orderService.sumTotalPriceByStatus(OrderStatus.TRADE_PAID_SUCCESS.name()));
+        // P1-7：统一已付营收口径（已付款/已发货/已完成），与销售日报、商家统计一致
+        stats.put("totalRevenue", orderService.sumTotalPriceByStatuses(OrderStatus.paidRevenueStatuses()));
         return Result.success(stats);
     }
 
@@ -86,20 +90,24 @@ public class AdminController {
     /** 商品管理列表（全量含下架，分页；顾客端在售列表走 /api/product/page） */
     @GetMapping("/product/list")
     public Result<com.qinghe.mall.model.Paging<com.qinghe.mall.model.Product>> listProducts(
-            @RequestParam(value = "pagination", defaultValue = "1") Integer pagination,
+            @RequestParam(value = "pageNum", required = false) Integer pageNum,
+            @RequestParam(value = "pagination", required = false) Integer legacyPagination,
             @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize,
             @RequestParam(value = "keyword", required = false) String keyword,
             HttpServletRequest request) {
         if (!checkAdmin(request)) {
             return Result.fail(403, "无管理员权限");
         }
-        return Result.success(productService.queryPage(pagination, pageSize, keyword, null, null));
+        // P2-12：页码参数统一 pageNum，pagination 仅作兼容别名
+        int page = PageParams.resolve(pageNum, legacyPagination);
+        return Result.success(productService.queryPage(page, pageSize, keyword, null, null));
     }
 
     // ========== 订单管理 ==========
     @GetMapping("/order/list")
     public Result<Paging<Order>> listAllOrders(
-            @RequestParam(value = "pagination", defaultValue = "1") Integer pagination,
+            @RequestParam(value = "pageNum", required = false) Integer pageNum,
+            @RequestParam(value = "pagination", required = false) Integer legacyPagination,
             @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize,
             @RequestParam(value = "status", required = false) String status,
             HttpServletRequest request) {
@@ -107,7 +115,9 @@ public class AdminController {
             return Result.fail(403, "无管理员权限");
         }
         // P1-11：管理端订单分页（原全表捞取，数据量大时超时/OOM）
-        return Result.success(orderService.findAdminPage(pagination, pageSize, status));
+        // P2-12：页码参数统一 pageNum，pagination 仅作兼容别名
+        int page = PageParams.resolve(pageNum, legacyPagination);
+        return Result.success(orderService.findAdminPage(page, pageSize, status));
     }
 
     @PostMapping("/order/updateStatus")
@@ -122,28 +132,49 @@ public class AdminController {
     }
 
     /**
-     * 发货：仅已付款订单可发货，状态机守卫（管理员操作）。
+     * 发货（管理员操作，P2-18 升级）：携带 company + trackingNumber 时建立物流档案，
+     * 缺省时保留旧的纯状态发货（向后兼容）。
      */
     @PostMapping("/order/ship")
-    public Result<Void> shipOrder(@RequestParam("orderNumber") String orderNumber, HttpServletRequest request) {
+    public Result<Void> shipOrder(@RequestParam("orderNumber") String orderNumber,
+                                  @RequestParam(value = "company", required = false) String company,
+                                  @RequestParam(value = "trackingNumber", required = false) String trackingNumber,
+                                  HttpServletRequest request) {
         if (!checkAdmin(request)) {
             return Result.fail(403, "无管理员权限");
         }
-        orderService.shipOrder(orderNumber);
+        if (org.apache.commons.lang3.StringUtils.isNotBlank(company)
+                && org.apache.commons.lang3.StringUtils.isNotBlank(trackingNumber)) {
+            logisticsService.ship(orderNumber, company, trackingNumber);
+        } else {
+            orderService.shipOrder(orderNumber);
+        }
         return Result.success();
     }
 
+    /** 推进物流状态（管理员操作，P2-18）：SHIPPED→IN_TRANSIT→DELIVERING→SIGNED */
+    @PostMapping("/logistics/advance")
+    public Result<Logistics> advanceLogistics(@RequestParam("orderNumber") String orderNumber,
+                                              HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(logisticsService.advance(orderNumber));
+    }
+
     /**
-     * 处理退款：退款中订单 → 已退款(approve) 或回退已付款(reject)，状态机守卫（管理员操作）。
+     * 处理退款（管理员操作，P2-18 升级）：经 RefundService 审核——
+     * 通过：订单置已退款 + 库存回补 + 释放优惠券；驳回：订单回退申请前状态。
      */
     @PostMapping("/order/refund/process")
     public Result<Void> processRefund(@RequestParam("orderNumber") String orderNumber,
                                       @RequestParam(value = "approve", defaultValue = "true") boolean approve,
+                                      @RequestParam(value = "comment", required = false) String comment,
                                       HttpServletRequest request) {
         if (!checkAdmin(request)) {
             return Result.fail(403, "无管理员权限");
         }
-        orderService.processRefund(orderNumber, approve);
+        refundService.review(orderNumber, approve, comment);
         return Result.success();
     }
 
@@ -251,14 +282,17 @@ public class AdminController {
     // ========== 用户管理 ==========
     @GetMapping("/user/list")
     public Result<Paging<User>> listAllUsers(
-            @RequestParam(value = "pagination", defaultValue = "1") Integer pagination,
+            @RequestParam(value = "pageNum", required = false) Integer pageNum,
+            @RequestParam(value = "pagination", required = false) Integer legacyPagination,
             @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize,
             HttpServletRequest request) {
         if (!checkAdmin(request)) {
             return Result.fail(403, "无管理员权限");
         }
         // P1-11：管理端用户分页（原全表捞取）
-        Paging<User> paging = userService.findAdminPage(pagination, pageSize);
+        // P2-12：页码参数统一 pageNum，pagination 仅作兼容别名
+        int page = PageParams.resolve(pageNum, legacyPagination);
+        Paging<User> paging = userService.findAdminPage(page, pageSize);
         // 不返回密码
         if (paging.getData() != null) {
             paging.getData().forEach(u -> u.setPwd(null));

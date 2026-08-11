@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.LogisticsDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.LogisticsDO">
+        <id column="id" property="id" jdbcType="VARCHAR"/>
+        <result column="order_number" property="orderNumber" jdbcType="VARCHAR"/>
+        <result column="company" property="company" jdbcType="VARCHAR"/>
+        <result column="tracking_number" property="trackingNumber" jdbcType="VARCHAR"/>
+        <result column="status" property="status" jdbcType="VARCHAR"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+        <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, order_number, company, tracking_number, status, gmt_created, gmt_modified
+    </sql>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.LogisticsDO">
+        INSERT INTO logistics (id, order_number, company, tracking_number, status, gmt_created, gmt_modified)
+        VALUES (#{id}, #{orderNumber}, #{company}, #{trackingNumber}, #{status}, #{gmtCreated}, #{gmtModified})
+    </insert>
+
+    <select id="findByOrderNumber" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM logistics
+        WHERE order_number = #{orderNumber}
+    </select>
+
+    <!-- CAS 推进物流状态：仅当前状态匹配时生效，防并发重复推进 -->
+    <update id="updateStatusWithGuard">
+        UPDATE logistics
+        SET status = #{targetStatus}, gmt_modified = NOW()
+        WHERE order_number = #{orderNumber} AND status = #{expectedStatus}
+    </update>
+
+    <delete id="deleteByOrderNumberForTest">
+        DELETE FROM logistics WHERE order_number = #{orderNumber}
+    </delete>
+
+</mapper>

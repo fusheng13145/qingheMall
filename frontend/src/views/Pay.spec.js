@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import Pay from './Pay.vue'
+import { toasts } from '../utils/toast'
 
 const { push, replace, route } = vi.hoisted(() => ({
   push: vi.fn(),
@@ -22,7 +23,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   push.mockClear()
   replace.mockClear()
-  global.alert = vi.fn()
+  toasts.splice(0, toasts.length)
 })
 
 describe('Pay 支付页', () => {
@@ -107,7 +108,7 @@ describe('Pay 支付页', () => {
     mount(Pay)
     await flushPromises()
 
-    expect(global.alert).toHaveBeenCalled()
+    expect(toasts.some(t => t.type === 'error' && t.message.includes('加载订单失败'))).toBe(true)
     expect(push).toHaveBeenCalledWith('/orders')
   })
 })

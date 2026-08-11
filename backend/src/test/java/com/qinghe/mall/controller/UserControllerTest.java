@@ -96,6 +96,28 @@ class UserControllerTest {
     }
 
     @Test
+    void logout_invalidatesSession() throws Exception {
+        // P2-10：退出必须整体失效会话（而非仅清属性），防止会话 ID 残留复用
+        MockHttpSession session = new MockHttpSession();
+        session.setAttribute("userId", 1L);
+        session.setAttribute("role", "USER");
+
+        mockMvc.perform(get("/api/user/logout").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        org.junit.jupiter.api.Assertions.assertTrue(session.isInvalid(), "logout 后服务端会话应已失效");
+    }
+
+    @Test
+    void logout_noSession_stillOk() throws Exception {
+        // 未登录调用退出不应报错
+        mockMvc.perform(get("/api/user/logout"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
     void updateProfile_invalidAvatar_400() throws Exception {
         MockHttpSession session = new MockHttpSession();
         session.setAttribute("userId", 1L);

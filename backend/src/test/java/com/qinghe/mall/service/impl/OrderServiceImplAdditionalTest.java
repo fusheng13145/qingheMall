@@ -368,11 +368,11 @@ class OrderServiceImplAdditionalTest {
     }
 
     @Test
-    @DisplayName("dailySalesReport 透传 DAO")
+    @DisplayName("dailySalesReport 统一口径透传 DAO")
     void dailySalesReport_delegates() {
         List<Map<String, Object>> report = new ArrayList<>();
         report.add(new HashMap<>());
-        when(orderDAO.dailySalesReport(7, OrderStatus.TRADE_PAID_SUCCESS.name())).thenReturn(report);
+        when(orderDAO.dailySalesReportByStatuses(7, OrderStatus.paidRevenueStatuses())).thenReturn(report);
 
         assertEquals(report, orderService.dailySalesReport(7));
     }
@@ -629,12 +629,64 @@ class OrderServiceImplAdditionalTest {
     }
 
     @Test
-    @DisplayName("updateOrderStatus 合法透传成败")
-    void updateOrderStatus_delegates() {
-        when(orderDAO.updateStatus("QH1", OrderStatus.TRADE_CLOSED.name())).thenReturn(1);
+    @DisplayName("updateOrderStatus 状态机：允许转移走 CAS 成功")
+    void updateOrderStatus_allowedTransition_success() {
+        OrderDO do_ = new OrderDO();
+        do_.setOrderNumber("QH1");
+        do_.setStatus(OrderStatus.WAIT_BUYER_PAY.name());
+        when(orderDAO.findByOrderNumber("QH1")).thenReturn(do_);
+        when(orderDAO.updateStatusWithGuard("QH1",
+                OrderStatus.WAIT_BUYER_PAY.name(), OrderStatus.TRADE_CLOSED.name())).thenReturn(1);
         assertTrue(orderService.updateOrderStatus("QH1", OrderStatus.TRADE_CLOSED.name()));
-        when(orderDAO.updateStatus("QH1", OrderStatus.TRADE_CLOSED.name())).thenReturn(0);
-        assertFalse(orderService.updateOrderStatus("QH1", OrderStatus.TRADE_CLOSED.name()));
+        verify(orderDAO).updateStatusWithGuard("QH1",
+                OrderStatus.WAIT_BUYER_PAY.name(), OrderStatus.TRADE_CLOSED.name());
+    }
+
+    @Test
+    @DisplayName("updateOrderStatus 状态机：白名单外转移被拒绝")
+    void updateOrderStatus_disallowedTransition_throws() {
+        OrderDO do_ = new OrderDO();
+        do_.setOrderNumber("QH1");
+        do_.setStatus(OrderStatus.TRADE_COMPLETED.name());
+        when(orderDAO.findByOrderNumber("QH1")).thenReturn(do_);
+        // 已完成 → 待付款 不在白名单
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> orderService.updateOrderStatus("QH1", OrderStatus.WAIT_BUYER_PAY.name()));
+        assertTrue(ex.getMessage().contains("不允许的状态变更"));
+        verify(orderDAO, never()).updateStatusWithGuard(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("updateOrderStatus 状态机：终态（已关闭）无出边")
+    void updateOrderStatus_terminalState_throws() {
+        OrderDO do_ = new OrderDO();
+        do_.setOrderNumber("QH1");
+        do_.setStatus(OrderStatus.TRADE_CLOSED.name());
+        when(orderDAO.findByOrderNumber("QH1")).thenReturn(do_);
+        assertThrows(RuntimeException.class,
+                () -> orderService.updateOrderStatus("QH1", OrderStatus.TRADE_SHIPPED.name()));
+    }
+
+    @Test
+    @DisplayName("updateOrderStatus 状态机：并发 CAS 未命中抛错")
+    void updateOrderStatus_casMiss_throws() {
+        OrderDO do_ = new OrderDO();
+        do_.setOrderNumber("QH1");
+        do_.setStatus(OrderStatus.WAIT_BUYER_PAY.name());
+        when(orderDAO.findByOrderNumber("QH1")).thenReturn(do_);
+        when(orderDAO.updateStatusWithGuard(anyString(), anyString(), anyString())).thenReturn(0);
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> orderService.updateOrderStatus("QH1", OrderStatus.TRADE_CLOSED.name()));
+        assertTrue(ex.getMessage().contains("订单状态已变化"));
+    }
+
+    @Test
+    @DisplayName("updateOrderStatus 状态机：订单不存在抛错")
+    void updateOrderStatus_orderNotFound_throws() {
+        when(orderDAO.findByOrderNumber("QH404")).thenReturn(null);
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> orderService.updateOrderStatus("QH404", OrderStatus.TRADE_CLOSED.name()));
+        assertTrue(ex.getMessage().contains("订单不存在"));
     }
 
     @Test

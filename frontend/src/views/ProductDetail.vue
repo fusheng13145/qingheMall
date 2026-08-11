@@ -158,6 +158,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { toast, apiError } from '../utils/toast'
 import { useRoute, useRouter } from 'vue-router'
 import { get, getProductDetails, pageQuery } from '../api/product'
 import { addOrder } from '../api/order'
@@ -237,9 +238,9 @@ async function handleAddCart() {
   try {
     await addCart(selectedDetail.value.id, buyQuantity.value)
     cartStore.refreshCount()
-    alert('已加入购物车')
+    toast.success('已加入购物车')
   } catch (error) {
-    alert('加入购物车失败：' + (error.message || '请稍后重试'))
+    apiError(error, '加入购物车失败')
   } finally {
     addingCart.value = false
   }
@@ -342,7 +343,7 @@ async function handleBuy() {
     // 下单成功：进入收银台选择支付方式
     router.push({ name: 'Pay', query: { orderNumber: orderRes.data.orderNumber } })
   } catch (error) {
-    alert('创建订单失败：' + (error.message || '请稍后重试'))
+    apiError(error, '创建订单失败')
   } finally {
     buying.value = false
   }

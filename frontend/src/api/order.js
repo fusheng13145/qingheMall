@@ -15,13 +15,13 @@ export function cancelOrder(orderNumber) {
   return request.post('/order/cancel', null, { params: { orderNumber } })
 }
 
-// 订单列表（分页 + 状态筛选）：GET /api/order/list?status=&pagination=&pageSize=
+// 订单列表（分页 + 状态筛选）：GET /api/order/list?status=&pageNum=&pageSize=（P2-12 统一 pageNum）
 // status 为 OrderStatus 枚举值（如 WAIT_BUYER_PAY），缺省返回当前用户全部订单
 // 返回 Paging<Order>：{ pageNum, pageSize, totalPage, totalCount, data }
-export function listOrders(status, pagination = 1, pageSize = 10) {
+export function listOrders(status, pageNum = 1, pageSize = 10) {
   return request.get('/order/list', {
     params: {
-      pagination,
+      pageNum,
       pageSize,
       ...(status ? { status } : {})
     }
@@ -42,7 +42,15 @@ export function confirmReceipt(orderNumber) {
   return request.post('/order/confirmReceipt', null, { params: { orderNumber } })
 }
 
-// 申请退款：POST /api/order/refund/apply?orderNumber=（归属用户，仅未发货的已付款可发起）
-export function applyRefund(orderNumber) {
-  return request.post('/order/refund/apply', null, { params: { orderNumber } })
+// 申请退款/退货：POST /api/order/refund/apply?orderNumber=&reason=&type=（P2-18）
+// 已付款未发货 → 仅退款（REFUND_ONLY）；已发货/已完成 → 退货退款（RETURN_REFUND）
+// type 缺省时后端按订单状态自动推导；reason 必填
+export function applyRefund(orderNumber, reason, type) {
+  return request.post('/order/refund/apply', null, {
+    params: {
+      orderNumber,
+      reason,
+      ...(type ? { type } : {})
+    }
+  })
 }

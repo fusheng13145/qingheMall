@@ -42,11 +42,13 @@
             <td class="time">{{ formatTime(o.gmtCreated) }}</td>
             <td>
               <div class="row-actions">
-                <button v-if="o.status === 'TRADE_PAID_SUCCESS'" class="link-btn" @click="ship(o)">发货</button>
-                <template v-if="o.status === 'TRADE_REFUNDING'">
-                  <button class="link-btn" @click="refund(o, true)">同意退款</button>
-                  <button class="link-btn danger" @click="refund(o, false)">拒绝</button>
-                </template>
+                <button v-if="o.status === 'TRADE_PAID_SUCCESS'" class="link-btn" @click="openShip(o)">发货</button>
+                <button
+                  v-if="['TRADE_SHIPPED', 'TRADE_COMPLETED', 'TRADE_REFUNDED'].includes(o.status)"
+                  class="link-btn"
+                  @click="openLogistics(o)"
+                >物流</button>
+                <button v-if="o.status === 'TRADE_REFUNDING'" class="link-btn danger" @click="openRefund(o)">退款审核</button>
                 <span v-if="!canOperate(o.status)" class="muted">-</span>
               </div>
             </td>
@@ -62,12 +64,98 @@
         <button class="btn-ghost" :disabled="pageNum >= totalPage" @click="load(pageNum + 1)">下一页</button>
       </div>
     </div>
+
+    <!-- 发货弹窗（P2-18：录入承运商与运单号，建立物流档案） -->
+    <div v-if="shipModalOpen" class="modal-overlay" @click.self="closeShip">
+      <div class="modal">
+        <h3 class="modal-title">订单发货</h3>
+        <div class="modal-sub">订单号：{{ shipTarget ? shipTarget.orderNumber : '' }}</div>
+        <div class="form-grid">
+          <label class="form-label">承运商</label>
+          <select v-model="shipCompany" class="form-input">
+            <option v-for="c in companies" :key="c" :value="c">{{ c }}</option>
+          </select>
+          <label class="form-label">运单号</label>
+          <input v-model="shipTracking" class="form-input" maxlength="64" placeholder="请填写快递运单号" />
+        </div>
+        <div class="modal-actions">
+          <button class="btn-ghost" @click="closeShip">取消</button>
+          <button class="btn-primary" :disabled="shipping" @click="submitShip">
+            {{ shipping ? '发货中...' : '确认发货' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 物流弹窗（P2-18：轨迹时间线 + 手动推进） -->
+    <div v-if="logisticsModalOpen" class="modal-overlay" @click.self="closeLogistics">
+      <div class="modal">
+        <h3 class="modal-title">物流跟踪</h3>
+        <div class="modal-sub">订单号：{{ logisticsTarget ? logisticsTarget.orderNumber : '' }}</div>
+        <div v-if="logisticsLoading" class="modal-loading">加载中...</div>
+        <LogisticsTimeline v-else-if="logisticsData" :logistics="logisticsData" />
+        <div v-else class="modal-loading">暂无物流信息</div>
+        <div class="modal-actions">
+          <button class="btn-ghost" @click="closeLogistics">关闭</button>
+          <button
+            v-if="logisticsData && logisticsData.status !== 'SIGNED'"
+            class="btn-primary"
+            :disabled="advancing"
+            @click="advance"
+          >
+            {{ advancing ? '更新中...' : '更新物流状态' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 退款审核弹窗（P2-18：查看申请原因，填写审核意见） -->
+    <div v-if="refundModalOpen" class="modal-overlay" @click.self="closeRefund">
+      <div class="modal">
+        <h3 class="modal-title">退款审核</h3>
+        <div class="modal-sub">订单号：{{ refundTarget ? refundTarget.orderNumber : '' }}</div>
+        <div v-if="refundLoading" class="modal-loading">加载中...</div>
+        <template v-else>
+          <div v-if="refundRequest" class="refund-info">
+            <div class="refund-row">
+              <span class="refund-label">申请类型</span>
+              <span class="tag tag-warn">{{ refundTypeText(refundRequest.type) }}</span>
+            </div>
+            <div class="refund-row">
+              <span class="refund-label">申请原因</span>
+              <span class="refund-reason">{{ refundRequest.reason }}</span>
+            </div>
+            <div class="refund-row">
+              <span class="refund-label">申请时间</span>
+              <span class="time">{{ formatTime(refundRequest.gmtCreated) }}</span>
+            </div>
+          </div>
+          <div v-else class="modal-loading">未找到待审核的退款申请</div>
+          <textarea
+            v-model="refundComment"
+            class="comment-textarea"
+            rows="3"
+            maxlength="200"
+            placeholder="审核意见（驳回时必填，将展示给用户）"
+          ></textarea>
+        </template>
+        <div class="modal-actions">
+          <button class="btn-ghost" @click="closeRefund">关闭</button>
+          <button class="btn-danger" :disabled="reviewing || !refundRequest" @click="reviewRefund(false)">驳回</button>
+          <button class="btn-primary" :disabled="reviewing || !refundRequest" @click="reviewRefund(true)">同意退款</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { listMerchantOrders, merchantShip, merchantProcessRefund } from '../../api/merchant'
+import { toast, apiError } from '../../utils/toast'
+import { listMerchantOrders, merchantShip, merchantProcessRefund, merchantAdvanceLogistics } from '../../api/merchant'
+import { trackLogistics } from '../../api/logistics'
+import { listOrderRefunds } from '../../api/refund'
+import LogisticsTimeline from '../../components/common/LogisticsTimeline.vue'
 
 const tabs = [
   { label: '全部', value: '' },
@@ -79,6 +167,8 @@ const tabs = [
   { label: '已退款', value: 'TRADE_REFUNDED' }
 ]
 
+const companies = ['顺丰速运', '圆通速递', '中通快递', '韵达快递', '申通快递', '极兔速递', '其他']
+
 const orders = ref([])
 const loading = ref(false)
 const pageNum = ref(1)
@@ -86,6 +176,28 @@ const pageSize = ref(10)
 const totalPage = ref(1)
 const totalCount = ref(0)
 const status = ref('')
+
+// 发货弹窗状态
+const shipModalOpen = ref(false)
+const shipTarget = ref(null)
+const shipCompany = ref('顺丰速运')
+const shipTracking = ref('')
+const shipping = ref(false)
+
+// 物流弹窗状态
+const logisticsModalOpen = ref(false)
+const logisticsTarget = ref(null)
+const logisticsData = ref(null)
+const logisticsLoading = ref(false)
+const advancing = ref(false)
+
+// 退款审核弹窗状态
+const refundModalOpen = ref(false)
+const refundTarget = ref(null)
+const refundRequest = ref(null)
+const refundLoading = ref(false)
+const refundComment = ref('')
+const reviewing = ref(false)
 
 function statusText(s) {
   const map = {
@@ -111,8 +223,14 @@ function statusClass(s) {
   return 'off'
 }
 
+function refundTypeText(type) {
+  if (type === 'REFUND_ONLY') return '仅退款'
+  if (type === 'RETURN_REFUND') return '退货退款'
+  return type || '-'
+}
+
 function canOperate(s) {
-  return s === 'TRADE_PAID_SUCCESS' || s === 'TRADE_REFUNDING'
+  return ['TRADE_PAID_SUCCESS', 'TRADE_SHIPPED', 'TRADE_COMPLETED', 'TRADE_REFUNDING', 'TRADE_REFUNDED'].includes(s)
 }
 
 function switchTab(v) {
@@ -134,30 +252,115 @@ async function load(page) {
     totalCount.value = res.data.totalCount
     orders.value = res.data.data
   } catch (e) {
-    alert(e.message || '加载失败')
+    apiError(e, '加载失败')
   } finally {
     loading.value = false
   }
 }
 
-async function ship(o) {
-  if (!confirm(`确认发货订单 ${o.orderNumber}？`)) return
+// ========== 发货（P2-18：录入物流信息） ==========
+
+function openShip(o) {
+  shipTarget.value = o
+  shipCompany.value = '顺丰速运'
+  shipTracking.value = ''
+  shipModalOpen.value = true
+}
+
+function closeShip() {
+  shipModalOpen.value = false
+}
+
+async function submitShip() {
+  if (!shipTracking.value.trim()) {
+    toast.warning('请填写运单号')
+    return
+  }
+  shipping.value = true
   try {
-    await merchantShip(o.orderNumber)
+    await merchantShip(shipTarget.value.orderNumber, shipCompany.value, shipTracking.value.trim())
+    toast.success('发货成功，物流信息已录入')
+    shipModalOpen.value = false
     load(pageNum.value)
   } catch (e) {
-    alert(e.message || '发货失败')
+    apiError(e, '发货失败')
+  } finally {
+    shipping.value = false
   }
 }
 
-async function refund(o, approve) {
-  const tip = approve ? '同意退款' : '拒绝退款'
-  if (!confirm(`确认${tip}订单 ${o.orderNumber}？`)) return
+// ========== 物流跟踪（P2-18） ==========
+
+async function openLogistics(o) {
+  logisticsTarget.value = o
+  logisticsData.value = null
+  logisticsModalOpen.value = true
+  logisticsLoading.value = true
   try {
-    await merchantProcessRefund(o.orderNumber, approve)
+    const res = await trackLogistics(o.orderNumber)
+    logisticsData.value = res.data
+  } catch (e) {
+    apiError(e, '获取物流信息失败')
+  } finally {
+    logisticsLoading.value = false
+  }
+}
+
+function closeLogistics() {
+  logisticsModalOpen.value = false
+}
+
+async function advance() {
+  advancing.value = true
+  try {
+    const res = await merchantAdvanceLogistics(logisticsTarget.value.orderNumber)
+    logisticsData.value = res.data
+    toast.success('物流状态已更新')
     load(pageNum.value)
   } catch (e) {
-    alert(e.message || '操作失败')
+    apiError(e, '物流状态更新失败')
+  } finally {
+    advancing.value = false
+  }
+}
+
+// ========== 退款审核（P2-18） ==========
+
+async function openRefund(o) {
+  refundTarget.value = o
+  refundRequest.value = null
+  refundComment.value = ''
+  refundModalOpen.value = true
+  refundLoading.value = true
+  try {
+    const res = await listOrderRefunds(o.orderNumber)
+    refundRequest.value = (res.data || []).find((r) => r.status === 'PENDING') || null
+  } catch (e) {
+    apiError(e, '获取退款申请失败')
+  } finally {
+    refundLoading.value = false
+  }
+}
+
+function closeRefund() {
+  refundModalOpen.value = false
+}
+
+async function reviewRefund(approve) {
+  if (!approve && !refundComment.value.trim()) {
+    toast.warning('驳回时请填写审核意见')
+    return
+  }
+  reviewing.value = true
+  try {
+    await merchantProcessRefund(refundTarget.value.orderNumber, approve, refundComment.value.trim() || null)
+    toast.success(approve ? '已通过退款，库存已回补' : '已驳回退款申请')
+    refundModalOpen.value = false
+    load(pageNum.value)
+  } catch (e) {
+    apiError(e, '操作失败')
+  } finally {
+    reviewing.value = false
   }
 }
 
@@ -348,6 +551,153 @@ onMounted(() => load(1))
 
 .btn-ghost:disabled {
   opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 300;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 60px 16px;
+  overflow-y: auto;
+}
+
+.modal {
+  width: 100%;
+  max-width: 480px;
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: 6px;
+}
+
+.modal-sub {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  margin-bottom: 16px;
+}
+
+.modal-loading {
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+  padding: 20px 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 12px 14px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.form-input {
+  padding: 9px 12px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 14px;
+  width: 100%;
+}
+
+.comment-textarea {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 14px;
+  resize: vertical;
+}
+
+.refund-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.refund-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.refund-label {
+  color: var(--color-text-tertiary);
+  width: 56px;
+  flex-shrink: 0;
+}
+
+.refund-reason {
+  color: var(--color-text);
+  word-break: break-all;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.btn-primary {
+  padding: 9px 18px;
+  background: var(--color-primary);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  transition: opacity var(--transition-fast);
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  padding: 9px 18px;
+  background: var(--color-danger);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+
+.btn-danger:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn-danger:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }
 </style>

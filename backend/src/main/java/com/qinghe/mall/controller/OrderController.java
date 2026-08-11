@@ -2,8 +2,11 @@ package com.qinghe.mall.controller;
 
 import com.qinghe.mall.config.RateLimit;
 import com.qinghe.mall.model.Order;
+import com.qinghe.mall.model.RefundRequest;
 import com.qinghe.mall.model.Result;
 import com.qinghe.mall.service.OrderService;
+import com.qinghe.mall.service.RefundService;
+import com.qinghe.mall.util.PageParams;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +24,9 @@ public class OrderController {
 
     @Autowired
     private OrderService orderService;
+
+    @Autowired
+    private RefundService refundService;
 
     private Result<Order> addOrderInternal(Order order, Long userId) {
         order.setUserId(userId);
@@ -88,27 +94,35 @@ public class OrderController {
     }
 
     /**
-     * 申请退款：仅未发货的已付款订单可申请，归属校验。
+     * 申请退款/退货（P2-18）：
+     * - 已付款未发货 → 仅退款（REFUND_ONLY）
+     * - 已发货/已完成 → 退货退款（RETURN_REFUND）
+     * 类型缺省时按订单状态自动推导；reason 必填。归属校验 + 重复申请守卫。
      */
     @RateLimit(rate = 20, message = "操作过于频繁，请稍后再试")
     @PostMapping("/refund/apply")
-    public Result<Void> applyRefund(@RequestParam("orderNumber") String orderNumber, HttpServletRequest request) {
+    public Result<RefundRequest> applyRefund(@RequestParam("orderNumber") String orderNumber,
+                                             @RequestParam(value = "type", required = false) String type,
+                                             @RequestParam(value = "reason", required = false) String reason,
+                                             HttpServletRequest request) {
         Object userIdObj = request.getSession().getAttribute("userId");
         if (userIdObj == null) {
             return Result.fail(401, "未登录");
         }
-        orderService.applyRefund(orderNumber, (Long) userIdObj);
-        return Result.success();
+        RefundRequest created = refundService.apply(orderNumber, (Long) userIdObj, type, reason);
+        return Result.success(created);
     }
 
     /**
-     * 订单列表（分页，按状态筛选）：GET /api/order/list?status=&pagination=&pageSize=
+     * 订单列表（分页，按状态筛选）：GET /api/order/list?status=&pageNum=&pageSize=
      * 返回 Paging<Order>：{ pageNum, pageSize, totalPage, totalCount, data }。
+     * （P2-12：页码统一 pageNum，旧参数 pagination 仍兼容）
      */
     @GetMapping("/list")
     public Result<com.qinghe.mall.model.Paging<Order>> listOrders(
             @RequestParam(value = "status", required = false) String status,
-            @RequestParam(value = "pagination", defaultValue = "1") Integer pagination,
+            @RequestParam(value = "pageNum", required = false) Integer pageNum,
+            @RequestParam(value = "pagination", required = false) Integer legacyPagination,
             @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize,
             HttpServletRequest request) {
         Object userIdObj = request.getSession().getAttribute("userId");
@@ -116,7 +130,8 @@ public class OrderController {
             return Result.fail(401, "未登录");
         }
         Long userId = (Long) userIdObj;
-        com.qinghe.mall.model.Paging<Order> paging = orderService.findPageByUserIdAndStatus(userId, status, pagination, pageSize);
+        int page = PageParams.resolve(pageNum, legacyPagination);
+        com.qinghe.mall.model.Paging<Order> paging = orderService.findPageByUserIdAndStatus(userId, status, page, pageSize);
         return Result.success(paging);
     }
 

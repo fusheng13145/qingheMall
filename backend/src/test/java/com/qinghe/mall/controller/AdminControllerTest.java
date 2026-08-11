@@ -52,6 +52,12 @@ class AdminControllerTest {
     @Mock
     private com.qinghe.mall.service.SeckillService seckillService;
 
+    @Mock
+    private com.qinghe.mall.service.LogisticsService logisticsService;
+
+    @Mock
+    private com.qinghe.mall.service.RefundService refundService;
+
     @InjectMocks
     private AdminController adminController;
 
@@ -148,7 +154,8 @@ class AdminControllerTest {
         when(productService.queryPage(1, 1, null, null, null)).thenReturn(empty);
         when(orderService.countAll()).thenReturn(42L);
         when(userService.countAll()).thenReturn(7L);
-        when(orderService.sumTotalPriceByStatus("TRADE_PAID_SUCCESS")).thenReturn(new java.math.BigDecimal("1999.00"));
+        when(orderService.sumTotalPriceByStatuses(com.qinghe.mall.model.OrderStatus.paidRevenueStatuses()))
+                .thenReturn(new java.math.BigDecimal("1999.00"));
 
         mockMvc.perform(get("/api/admin/dashboard").session(adminSession()))
                 .andExpect(jsonPath("$.code").value(200))
@@ -230,13 +237,43 @@ class AdminControllerTest {
     }
 
     @Test
+    void orderShip_withLogistics_buildsLogisticsRecord() throws Exception {
+        mockMvc.perform(post("/api/admin/order/ship")
+                        .session(adminSession())
+                        .param("orderNumber", "QH1")
+                        .param("company", "圆通")
+                        .param("trackingNumber", "YT9876"))
+                .andExpect(jsonPath("$.code").value(200));
+        org.mockito.Mockito.verify(logisticsService).ship("QH1", "圆通", "YT9876");
+        org.mockito.Mockito.verify(orderService, org.mockito.Mockito.never()).shipOrder(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void logisticsAdvance_admin_returnsLogistics() throws Exception {
+        com.qinghe.mall.model.Logistics logistics = new com.qinghe.mall.model.Logistics();
+        logistics.setStatus("DELIVERING");
+        when(logisticsService.advance("QH1")).thenReturn(logistics);
+
+        mockMvc.perform(post("/api/admin/logistics/advance").session(adminSession()).param("orderNumber", "QH1"))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("DELIVERING"));
+    }
+
+    @Test
+    void logisticsAdvance_unauthenticated_403() throws Exception {
+        mockMvc.perform(post("/api/admin/logistics/advance").param("orderNumber", "QH1"))
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
+    @Test
     void orderRefundProcess_admin_returnsSuccess() throws Exception {
         mockMvc.perform(post("/api/admin/order/refund/process")
                         .session(adminSession())
                         .param("orderNumber", "QH1")
-                        .param("approve", "false"))
+                        .param("approve", "false")
+                        .param("comment", "不符合退款条件"))
                 .andExpect(jsonPath("$.code").value(200));
-        org.mockito.Mockito.verify(orderService).processRefund("QH1", false);
+        org.mockito.Mockito.verify(refundService).review("QH1", false, "不符合退款条件");
     }
 
     @Test

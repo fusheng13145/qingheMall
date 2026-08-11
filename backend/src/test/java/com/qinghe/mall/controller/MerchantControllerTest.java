@@ -3,7 +3,9 @@ package com.qinghe.mall.controller;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,6 +45,12 @@ class MerchantControllerTest {
     @Mock
     private OrderService orderService;
 
+    @Mock
+    private com.qinghe.mall.service.LogisticsService logisticsService;
+
+    @Mock
+    private com.qinghe.mall.service.RefundService refundService;
+
     @InjectMocks
     private MerchantController merchantController;
 
@@ -51,7 +59,7 @@ class MerchantControllerTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        // 注册全局异常处理器：checkMerchant 抛出的 RuntimeException 统一转 Result.fail(500)
+        // 注册全局异常处理器：checkMerchant 抛出的 AuthException 转 Result.fail(401/403)（P1-8）
         mockMvc = MockMvcBuilders.standaloneSetup(merchantController)
                 .setControllerAdvice(new com.qinghe.mall.config.GlobalExceptionHandler())
                 .build();
@@ -140,7 +148,7 @@ class MerchantControllerTest {
     @Test
     void products_unauthenticated_throws() throws Exception {
         mockMvc.perform(get("/api/merchant/products"))
-                .andExpect(jsonPath("$.code").value(500));
+                .andExpect(jsonPath("$.code").value(401));
     }
 
     @Test
@@ -149,21 +157,21 @@ class MerchantControllerTest {
         session.setAttribute("userId", 10L);
         session.setAttribute("role", UserDO.ROLE_USER);
         mockMvc.perform(get("/api/merchant/products").session(session))
-                .andExpect(jsonPath("$.code").value(500));
+                .andExpect(jsonPath("$.code").value(403));
     }
 
     @Test
     void products_notRegistered_throws() throws Exception {
         when(merchantService.getByUserId(10L)).thenReturn(null);
         mockMvc.perform(get("/api/merchant/products").session(merchantSession(10L)))
-                .andExpect(jsonPath("$.code").value(500));
+                .andExpect(jsonPath("$.code").value(403));
     }
 
     @Test
     void products_pending_throws() throws Exception {
         when(merchantService.getByUserId(10L)).thenReturn(merchant(10L, MerchantDO.STATUS_PENDING));
         mockMvc.perform(get("/api/merchant/products").session(merchantSession(10L)))
-                .andExpect(jsonPath("$.code").value(500));
+                .andExpect(jsonPath("$.code").value(403));
     }
 
     @Test
@@ -172,14 +180,14 @@ class MerchantControllerTest {
         rejected.setRejectReason("资质不全");
         when(merchantService.getByUserId(10L)).thenReturn(rejected);
         mockMvc.perform(get("/api/merchant/products").session(merchantSession(10L)))
-                .andExpect(jsonPath("$.code").value(500));
+                .andExpect(jsonPath("$.code").value(403));
     }
 
     @Test
     void products_disabled_throws() throws Exception {
         when(merchantService.getByUserId(10L)).thenReturn(merchant(10L, MerchantDO.STATUS_DISABLED));
         mockMvc.perform(get("/api/merchant/products").session(merchantSession(10L)))
-                .andExpect(jsonPath("$.code").value(500));
+                .andExpect(jsonPath("$.code").value(403));
     }
 
     @Test
@@ -288,14 +296,90 @@ class MerchantControllerTest {
     }
 
     @Test
-    void processRefund_active_callsService() throws Exception {
+    void ship_withLogistics_buildsLogisticsRecord() throws Exception {
         mockActiveMerchant();
+        Order order = new Order();
+        order.setOrderNumber("QH1");
+        order.setMerchantId(10L);
+        when(orderService.findByOrderNumber("QH1")).thenReturn(order);
+
+        mockMvc.perform(post("/api/merchant/order/ship")
+                        .session(merchantSession(10L))
+                        .param("orderNumber", "QH1")
+                        .param("company", "顺丰速运")
+                        .param("trackingNumber", "SF123456"))
+                .andExpect(jsonPath("$.code").value(200));
+        verify(logisticsService).ship("QH1", "顺丰速运", "SF123456");
+        verify(orderService, never()).shipMerchantOrder(anyLong(), anyString());
+    }
+
+    @Test
+    void ship_withLogistics_otherShopOrder_rejected() throws Exception {
+        mockActiveMerchant();
+        Order order = new Order();
+        order.setOrderNumber("QH1");
+        order.setMerchantId(99L);
+        when(orderService.findByOrderNumber("QH1")).thenReturn(order);
+
+        mockMvc.perform(post("/api/merchant/order/ship")
+                        .session(merchantSession(10L))
+                        .param("orderNumber", "QH1")
+                        .param("company", "顺丰速运")
+                        .param("trackingNumber", "SF123456"))
+                .andExpect(jsonPath("$.code").value(500));
+        verify(logisticsService, never()).ship(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void advanceLogistics_active_delegates() throws Exception {
+        mockActiveMerchant();
+        Order order = new Order();
+        order.setOrderNumber("QH1");
+        order.setMerchantId(10L);
+        when(orderService.findByOrderNumber("QH1")).thenReturn(order);
+        com.qinghe.mall.model.Logistics logistics = new com.qinghe.mall.model.Logistics();
+        logistics.setStatus("IN_TRANSIT");
+        when(logisticsService.advance("QH1")).thenReturn(logistics);
+
+        mockMvc.perform(post("/api/merchant/logistics/advance")
+                        .session(merchantSession(10L))
+                        .param("orderNumber", "QH1"))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("IN_TRANSIT"));
+    }
+
+    @Test
+    void processRefund_active_callsRefundService() throws Exception {
+        mockActiveMerchant();
+        Order order = new Order();
+        order.setOrderNumber("QH1");
+        order.setMerchantId(10L);
+        when(orderService.findByOrderNumber("QH1")).thenReturn(order);
+
         mockMvc.perform(post("/api/merchant/order/refund/process")
                         .session(merchantSession(10L))
                         .param("orderNumber", "QH1")
-                        .param("approve", "false"))
+                        .param("approve", "false")
+                        .param("comment", "商品已发出，请确认收货"))
                 .andExpect(jsonPath("$.code").value(200));
-        verify(orderService).processMerchantRefund(10L, "QH1", false);
+        verify(refundService).review("QH1", false, "商品已发出，请确认收货");
+        verify(orderService, never()).processMerchantRefund(anyLong(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void processRefund_otherShopOrder_rejected() throws Exception {
+        mockActiveMerchant();
+        Order order = new Order();
+        order.setOrderNumber("QH1");
+        order.setMerchantId(99L);
+        when(orderService.findByOrderNumber("QH1")).thenReturn(order);
+
+        mockMvc.perform(post("/api/merchant/order/refund/process")
+                        .session(merchantSession(10L))
+                        .param("orderNumber", "QH1")
+                        .param("approve", "true"))
+                .andExpect(jsonPath("$.code").value(500));
+        verify(refundService, never()).review(anyString(), org.mockito.ArgumentMatchers.anyBoolean(), nullable(String.class));
     }
 
     @Test

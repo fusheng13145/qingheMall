@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { loginApi, logoutApi, checkLoginApi } from '../api/user'
+import { useCartStore } from './cart'
 
 export const useUserStore = defineStore('user', () => {
   const userId = ref(null)
@@ -31,6 +32,8 @@ export const useUserStore = defineStore('user', () => {
     nickName.value = ''
     role.value = ''
     isLoggedIn.value = false
+    // P2-15：登出/会话失效同步清空购物车本地状态，防止跨用户残留
+    useCartStore().reset()
   }
 
   async function login(userNameVal, pwd) {

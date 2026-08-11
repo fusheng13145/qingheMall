@@ -10,6 +10,8 @@
       </router-view>
     </main>
     <AppFooter v-if="!isConsoleRoute" />
+    <!-- 全局 Toast 通知（P2-13：替代阻塞式 alert） -->
+    <AppToast />
   </div>
 </template>
 
@@ -18,6 +20,7 @@ import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from './components/AppHeader.vue'
 import AppFooter from './components/AppFooter.vue'
+import AppToast from './components/common/AppToast.vue'
 import { useThemeStore } from './stores/theme'
 import { useUserStore } from './stores/user'
 

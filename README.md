@@ -15,7 +15,7 @@
 
 ### 环境要求
 
-JDK 17+、Maven 3.6+、Node 16+、MySQL 8、Redis 5+（Docker 20.10+ 可选）。
+JDK 17+、Maven 3.6+、Node 20+、MySQL 8、Redis 5+（Docker 20.10+ 可选）。
 
 ### 1. 初始化数据库
 
@@ -23,7 +23,7 @@ JDK 17+、Maven 3.6+、Node 16+、MySQL 8、Redis 5+（Docker 20.10+ 可选）�
 mysql -u root -p --default-character-set=utf8mb4 < backend/index.sql
 ```
 
-脚本自动创建 `qinghedb` 库、14 张业务表，并写入 16 个示例商品与 48 条规格数据（含种子管理员 `admin/123456`）。
+脚本自动创建 `qinghedb` 库、17 张业务表，并写入 16 个示例商品与 48 条规格数据（含种子管理员 `admin/123456`）。
 
 ### 2. 启动后端
 
@@ -47,31 +47,31 @@ npm run dev                    # http://localhost:5173，/api 与 /uploads 已�
 ```
 qingheMall
 ├── backend/                       # 后端服务（Spring Boot / Maven）
-│   ├── index.sql                  # 数据库全量初始化脚本（建库建表 + 种子数据，14 表）
-│   ├── sql/migration/             # 存量库增量迁移脚本 v1.1~v2.4（幂等，14 个）
+│   ├── index.sql                  # 数据库全量初始化脚本（建库建表 + 种子数据，17 表）
+│   ├── sql/migration/             # 存量库增量迁移脚本 v1.1~v2.6（幂等，16 个）
 │   ├── src/main/java/com/qinghe/mall/   # controller / service / dao / model / config / util
 │   ├── src/main/resources/        # application*.properties + MyBatis XML + seed-images
-│   └── src/test/java/             # 单元测试（474 用例）
+│   └── src/test/java/             # 单元测试（565 用例，JaCoCo 行覆盖 89%+ 门禁）
 ├── frontend/                      # 前端应用（Vue 3 / Vite）
-│   ├── src/api/                   # 接口封装（12 个模块）
-│   ├── src/components/ stores/ styles/ utils/ router/   # 组件（含 common/ConsoleSidebar）/ Pinia / 三端皮肤令牌 / 工具 / 路由
-│   ├── src/views/                 # 页面（前台 + admin/ + merchant/）
-│   ├── vite.config.js  nginx.conf  Dockerfile
+│   ├── src/api/                   # 接口封装（14 个模块）
+│   ├── src/components/ stores/ styles/ utils/ router/   # 组件（含 common/ConsoleSidebar、LogisticsTimeline）/ Pinia / 三端皮肤令牌 / 工具 / 路由
+│   ├── src/views/                 # 页面（前台 + admin/ + merchant/），测试 478 用例
+│   ├── vite.config.js  nginx.conf  nginx-ssl.conf  Dockerfile
 │   └── package-lock.json          # 依赖锁定
-├── deploy/                        # Prometheus / Grafana 监控配置
-├── .github/workflows/ci.yml       # CI：后端 test+package / 前端 lint+test+build
-├── docker-compose.yml             # 一键部署（mysql/redis/backend/frontend/prometheus/grafana）
+├── deploy/                        # Prometheus / Alertmanager / Grafana 监控告警配置
+├── .github/workflows/ci.yml       # CI/CD：后端 test+package / 前端 audit+lint+test+build / OWASP 扫描 / main 推送 GHCR 镜像
+├── docker-compose.yml             # 一键部署（mysql/redis/backend/frontend/prometheus/alertmanager/grafana）
 ├── .env.example                   # 部署环境变量模板（复制为 .env 填写真实值）
 └── 青禾商城手册.md                # ★ 唯一文档源（见下）
 ```
 
 ## 文档
 
-> 📖 **唯一文档源：[青禾商城手册.md](青禾商城手册.md)**（v4.6）—— 涵盖项目总览、目录说明、环境配置、快速开始、数据模型、API 大全、核心设计、支付接入、部署运维与上线流程、测试验收、版本路线图、已知问题与 FAQ。**后续文档变更一律并入手册，不再另开独立文档。**
+> 📖 **唯一文档源：[青禾商城手册.md](青禾商城手册.md)**（v5.7）—— 涵盖项目总览、目录说明、环境配置、快速开始、数据模型、API 大全、核心设计、支付接入、部署运维与上线流程、测试验收、版本路线图、已知问题与 FAQ。**后续文档变更一律并入手册，不再另开独立文档。**
 
 ## 已知限制
 
-详见[手册 §10 已知问题与限制](青禾商城手册.md)：真实支付需配置凭证（未配置回退模拟）、已发货订单暂不支持退款、优惠券仅单品订单可用等。
+详见[手册 §10 已知问题与限制](青禾商城手册.md)：真实支付需配置凭证（未配置回退模拟）、退款不对接真实支付网关原路退回（已发货订单支持退货退款审核，v5.7）、优惠券仅单品订单可用等。
 
 ## License
 

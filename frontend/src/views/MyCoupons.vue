@@ -53,6 +53,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { apiError } from '../utils/toast'
 import { myCoupons } from '../api/coupon'
 import { couponRuleText } from '../utils/coupon'
 
@@ -99,7 +100,7 @@ async function load() {
     const res = await myCoupons(activeTab.value)
     coupons.value = res.data || []
   } catch (e) {
-    alert('加载失败：' + (e.message || '请稍后重试'))
+    apiError(e, '加载失败')
   } finally {
     loading.value = false
   }

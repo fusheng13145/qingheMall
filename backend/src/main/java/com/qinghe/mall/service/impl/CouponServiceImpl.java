@@ -1,5 +1,6 @@
 package com.qinghe.mall.service.impl;
 
+import com.qinghe.mall.exception.BusinessException;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import com.qinghe.mall.dao.CouponDAO;
@@ -34,16 +35,16 @@ public class CouponServiceImpl implements CouponService {
     @Override
     public CouponDO createCoupon(CouponDO coupon) {
         if (coupon == null || StringUtils.isBlank(coupon.getName())) {
-            throw new RuntimeException("券名称不能为空");
+            throw new BusinessException("券名称不能为空");
         }
         if (!"FULL_REDUCTION".equals(coupon.getType()) && !"DISCOUNT".equals(coupon.getType())) {
-            throw new RuntimeException("券类型不合法（应为 FULL_REDUCTION 或 DISCOUNT）");
+            throw new BusinessException("券类型不合法（应为 FULL_REDUCTION 或 DISCOUNT）");
         }
         if (coupon.getStartTime() == null || coupon.getEndTime() == null) {
-            throw new RuntimeException("有效期起止时间不能为空");
+            throw new BusinessException("有效期起止时间不能为空");
         }
         if (coupon.getEndTime().before(coupon.getStartTime())) {
-            throw new RuntimeException("结束时间须晚于开始时间");
+            throw new BusinessException("结束时间须晚于开始时间");
         }
         if (coupon.getTotal() == null || coupon.getTotal() < 0) {
             coupon.setTotal(0);
@@ -91,10 +92,10 @@ public class CouponServiceImpl implements CouponService {
     public CouponDO updateCoupon(CouponDO coupon) {
         CouponDO existing = couponDAO.findById(coupon.getId());
         if (existing == null) {
-            throw new RuntimeException("券不存在");
+            throw new BusinessException("券不存在");
         }
         if ("ACTIVE".equals(existing.getStatus())) {
-            throw new RuntimeException("上架中的券不可修改，请先下架");
+            throw new BusinessException("上架中的券不可修改，请先下架");
         }
         couponDAO.update(coupon);
         return couponDAO.findById(coupon.getId());
@@ -103,7 +104,7 @@ public class CouponServiceImpl implements CouponService {
     @Override
     public void toggle(String couponId, String status) {
         if (!"ACTIVE".equals(status) && !"INACTIVE".equals(status)) {
-            throw new RuntimeException("状态不合法（应为 ACTIVE 或 INACTIVE）");
+            throw new BusinessException("状态不合法（应为 ACTIVE 或 INACTIVE）");
         }
         couponDAO.updateStatus(couponId, status);
     }
@@ -115,29 +116,29 @@ public class CouponServiceImpl implements CouponService {
     public void claim(String couponId, Long userId) {
         CouponDO coupon = couponDAO.findById(couponId);
         if (coupon == null) {
-            throw new RuntimeException("券不存在");
+            throw new BusinessException("券不存在");
         }
         if (!"ACTIVE".equals(coupon.getStatus())) {
-            throw new RuntimeException("券已下架");
+            throw new BusinessException("券已下架");
         }
         Date now = new Date();
         if (now.before(coupon.getStartTime()) || now.after(coupon.getEndTime())) {
-            throw new RuntimeException("不在领取时间内");
+            throw new BusinessException("不在领取时间内");
         }
         if (coupon.getTotal() != null && coupon.getIssued() != null && coupon.getIssued() >= coupon.getTotal()) {
-            throw new RuntimeException("券已领完");
+            throw new BusinessException("券已领完");
         }
         // P2：每人限领数量（perLimit > 1 时按已领数拦截；uk_user_coupon 唯一约束仍是 1 张底线）
         if (coupon.getPerLimit() != null && coupon.getPerLimit() > 1) {
             int claimed = userCouponDAO.countByUserAndCoupon(userId, couponId);
             if (claimed >= coupon.getPerLimit()) {
-                throw new RuntimeException("已达限领数量");
+                throw new BusinessException("已达限领数量");
             }
         }
         // 原子自增 issued（DB 层 WHERE issued < total 保证不超发）
         int inc = couponDAO.incrementIssued(couponId);
         if (inc <= 0) {
-            throw new RuntimeException("券已领完");
+            throw new BusinessException("券已领完");
         }
         UserCouponDO uc = new UserCouponDO();
         uc.setId(UUIDUtils.uuid());
@@ -150,7 +151,7 @@ public class CouponServiceImpl implements CouponService {
             userCouponDAO.insert(uc);
         } catch (DuplicateKeyException e) {
             // P2：仅捕获唯一约束冲突；DB 故障等真实异常重新抛出，避免误报业务失败
-            throw new RuntimeException("您已领取过该券");
+            throw new BusinessException("您已领取过该券");
         }
     }
 
@@ -198,7 +199,7 @@ public class CouponServiceImpl implements CouponService {
     public void lockCoupon(String userCouponId, Long userId, String orderNumber) {
         int updated = userCouponDAO.lock(userCouponId, userId, orderNumber);
         if (updated <= 0) {
-            throw new RuntimeException("优惠券不可用或已被使用");
+            throw new BusinessException("优惠券不可用或已被使用");
         }
     }
 
@@ -206,24 +207,24 @@ public class CouponServiceImpl implements CouponService {
     public BigDecimal validateAndComputeDiscount(String userCouponId, Long userId, BigDecimal orderTotal) {
         UserCouponDO uc = userCouponDAO.findById(userCouponId);
         if (uc == null) {
-            throw new RuntimeException("优惠券不存在");
+            throw new BusinessException("优惠券不存在");
         }
         if (!userId.equals(uc.getUserId())) {
-            throw new RuntimeException("优惠券不属于当前用户");
+            throw new BusinessException("优惠券不属于当前用户");
         }
         if (!"UNUSED".equals(uc.getStatus())) {
-            throw new RuntimeException("优惠券已使用");
+            throw new BusinessException("优惠券已使用");
         }
         CouponDO coupon = couponDAO.findById(uc.getCouponId());
         if (coupon == null) {
-            throw new RuntimeException("券模板不存在");
+            throw new BusinessException("券模板不存在");
         }
         if (!"ACTIVE".equals(coupon.getStatus())) {
-            throw new RuntimeException("券已下架");
+            throw new BusinessException("券已下架");
         }
         Date now = new Date();
         if (now.before(coupon.getStartTime()) || now.after(coupon.getEndTime())) {
-            throw new RuntimeException("券不在有效期");
+            throw new BusinessException("券不在有效期");
         }
         return calculateDiscount(uc, orderTotal);
     }

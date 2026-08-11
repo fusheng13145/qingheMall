@@ -1,5 +1,6 @@
 package com.qinghe.mall.service.impl;
 
+import com.qinghe.mall.exception.BusinessException;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import com.qinghe.mall.dao.CommentDAO;
@@ -42,43 +43,43 @@ public class CommentServiceImpl implements CommentService {
     @Override
     public Comment addComment(Long userId, String productId, String orderNumber, Integer rating, String content) {
         if (StringUtils.isBlank(productId)) {
-            throw new RuntimeException("商品ID不能为空");
+            throw new BusinessException("商品ID不能为空");
         }
         if (StringUtils.isBlank(orderNumber)) {
-            throw new RuntimeException("订单号不能为空");
+            throw new BusinessException("订单号不能为空");
         }
         if (rating == null || rating < 1 || rating > 5) {
-            throw new RuntimeException("评分必须为 1-5 星");
+            throw new BusinessException("评分必须为 1-5 星");
         }
         if (StringUtils.isBlank(content)) {
-            throw new RuntimeException("评价内容不能为空");
+            throw new BusinessException("评价内容不能为空");
         }
         if (content.length() > 500) {
-            throw new RuntimeException("评价内容不能超过 500 字");
+            throw new BusinessException("评价内容不能超过 500 字");
         }
         // 订单校验：存在、归属当前用户、已支付（P2：直查 OrderDAO 轻量校验，避免 fillExtra 冗余组装）
         OrderDO orderDO = orderDAO.findByOrderNumber(orderNumber);
         if (orderDO == null) {
-            throw new RuntimeException("订单不存在");
+            throw new BusinessException("订单不存在");
         }
         if (!orderDO.getUserId().equals(userId)) {
-            throw new RuntimeException("无权评价该订单");
+            throw new BusinessException("无权评价该订单");
         }
         if (!OrderStatus.TRADE_PAID_SUCCESS.name().equals(orderDO.getStatus())
                 && !OrderStatus.TRADE_SHIPPED.name().equals(orderDO.getStatus())
                 && !OrderStatus.TRADE_COMPLETED.name().equals(orderDO.getStatus())) {
-            throw new RuntimeException("仅已支付或已收货的订单可评价");
+            throw new BusinessException("仅已支付或已收货的订单可评价");
         }
         // 商品一致性：订单实际购买的商品必须与评价商品一致（防串评）
         if (StringUtils.isNotBlank(orderDO.getProductDetailId())) {
             ProductDetail detail = productDetailService.findById(orderDO.getProductDetailId());
             if (detail != null && !productId.equals(detail.getProductId())) {
-                throw new RuntimeException("评价商品与订单商品不一致");
+                throw new BusinessException("评价商品与订单商品不一致");
             }
         }
         // 防重复评价（数据库唯一索引 uk_order_number 兜底）
         if (commentDAO.countByOrderNumber(orderNumber) > 0) {
-            throw new RuntimeException("该订单已评价");
+            throw new BusinessException("该订单已评价");
         }
 
         CommentDO commentDO = new CommentDO();

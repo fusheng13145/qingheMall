@@ -86,6 +86,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { toast, apiError } from '../../utils/toast'
 import { getProductList, addProduct, updateProduct, deleteProduct } from '../../api/admin'
 import { uploadImage } from '../../api/file'
 
@@ -111,7 +112,7 @@ async function loadProducts() {
     // res.data 为 Paging<Product>，列表在 data 字段
     products.value = res.data.data || []
   } catch (e) {
-    alert('加载商品列表失败：' + (e.message || '请稍后重试'))
+    apiError(e, '加载商品列表失败')
   }
 }
 
@@ -144,7 +145,7 @@ async function handleUpload(event) {
       ? form.value.productImgs.trim() + ';' + url
       : url
   } catch (e) {
-    alert('上传失败：' + (e.message || '请稍后重试'))
+    apiError(e, '上传失败')
   } finally {
     uploading.value = false
   }
@@ -152,11 +153,11 @@ async function handleUpload(event) {
 
 async function handleSubmit() {
   if (!form.value.name) {
-    alert('请填写商品名称')
+    toast.warning('请填写商品名称')
     return
   }
   if (form.value.price == null || form.value.price === '') {
-    alert('请填写商品价格')
+    toast.warning('请填写商品价格')
     return
   }
   try {
@@ -168,7 +169,7 @@ async function handleSubmit() {
     await loadProducts()
     closeModal()
   } catch (e) {
-    alert('保存失败：' + (e.message || '请稍后重试'))
+    apiError(e, '保存失败')
   }
 }
 
@@ -178,7 +179,7 @@ async function handleDelete(product) {
     await deleteProduct(product.id)
     await loadProducts()
   } catch (e) {
-    alert('删除失败：' + (e.message || '请稍后重试'))
+    apiError(e, '删除失败')
   }
 }
 </script>

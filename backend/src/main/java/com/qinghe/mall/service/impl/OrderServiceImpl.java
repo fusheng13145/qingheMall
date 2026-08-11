@@ -1,5 +1,6 @@
 package com.qinghe.mall.service.impl;
 
+import com.qinghe.mall.exception.BusinessException;
 import com.qinghe.mall.dao.OrderDAO;
 import com.qinghe.mall.dao.CommentDAO;
 import com.qinghe.mall.dataobject.OrderDO;
@@ -18,8 +19,10 @@ import com.qinghe.mall.service.UserService;
 import com.qinghe.mall.util.UUIDUtils;
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -35,6 +38,36 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class OrderServiceImpl implements OrderService {
+
+    /**
+     * P1-6（2026-08-11）：管理员改单允许的状态转移白名单（状态机守卫）。
+     * 此前 /admin/order/updateStatus 仅校验目标值是合法枚举，管理员可把订单改成任意状态、
+     * 绕过状态机（如已完成→待付款、已关闭→已发货）。现仅放行下表列出的纠正性转移：
+     *   待付款   → 已付款 / 已关闭
+     *   已付款   → 已发货 / 已关闭 / 退款中 / 已退款
+     *   已发货   → 已完成 / 退款中
+     *   退款中   → 已退款（批准）/ 已付款（驳回回退）
+     *   已完成   → 退款中（售后）
+     * 终态（已关闭/已退款）无任何出边，禁止"复活"订单；
+     * TRADE_PAID_FAILED 为未使用状态，不作为任何转移的目标。
+     */
+    private static final Map<OrderStatus, Set<OrderStatus>> ADMIN_TRANSITIONS;
+
+    static {
+        Map<OrderStatus, Set<OrderStatus>> m = new EnumMap<>(OrderStatus.class);
+        m.put(OrderStatus.WAIT_BUYER_PAY,
+                EnumSet.of(OrderStatus.TRADE_PAID_SUCCESS, OrderStatus.TRADE_CLOSED));
+        m.put(OrderStatus.TRADE_PAID_SUCCESS,
+                EnumSet.of(OrderStatus.TRADE_SHIPPED, OrderStatus.TRADE_CLOSED,
+                        OrderStatus.TRADE_REFUNDING, OrderStatus.TRADE_REFUNDED));
+        m.put(OrderStatus.TRADE_SHIPPED,
+                EnumSet.of(OrderStatus.TRADE_COMPLETED, OrderStatus.TRADE_REFUNDING));
+        m.put(OrderStatus.TRADE_REFUNDING,
+                EnumSet.of(OrderStatus.TRADE_REFUNDED, OrderStatus.TRADE_PAID_SUCCESS));
+        m.put(OrderStatus.TRADE_COMPLETED,
+                EnumSet.of(OrderStatus.TRADE_REFUNDING));
+        ADMIN_TRANSITIONS = Collections.unmodifiableMap(m);
+    }
 
     @Autowired
     private OrderDAO orderDAO;
@@ -79,20 +112,20 @@ public class OrderServiceImpl implements OrderService {
     public Order createOrder(Order order, String userCouponId, BigDecimal discountAmount) {
         String productDetailId = order.getProductDetailId();
         if (productDetailId == null) {
-            throw new RuntimeException("商品规格ID不能为空");
+            throw new BusinessException("商品规格ID不能为空");
         }
         int quantity = order.getQuantity() != null && order.getQuantity() > 0 ? order.getQuantity() : 1;
         // 单笔购买数量上限（P2-7：防批量扫库存/异常大单）
         if (quantity > 99) {
-            throw new RuntimeException("单笔订单最多购买 99 件");
+            throw new BusinessException("单笔订单最多购买 99 件");
         }
 
         ProductDetail productDetail = productDetailService.findById(productDetailId);
         if (productDetail == null) {
-            throw new RuntimeException("商品规格不存在");
+            throw new BusinessException("商品规格不存在");
         }
         if (productDetail.getStock() < quantity) {
-            throw new RuntimeException("库存不足");
+            throw new BusinessException("库存不足");
         }
 
         // 使用分布式锁保证同一规格的并发下单串行化
@@ -102,7 +135,7 @@ public class OrderServiceImpl implements OrderService {
             RLock lock = redissonClient.getLock(lockKey);
             boolean locked = lock.tryLock(3, 5, TimeUnit.SECONDS);
             if (!locked) {
-                throw new RuntimeException("系统繁忙，请稍后重试");
+                throw new BusinessException("系统繁忙，请稍后重试");
             }
             try {
                 // 扣库存 + 插订单放在同一事务中：任一失败整体回滚。
@@ -116,7 +149,7 @@ public class OrderServiceImpl implements OrderService {
                     // 原子扣减库存（stock >= quantity 才生效），双重保障不超卖
                     boolean decreased = productDetailService.decreaseStock(productDetailId, quantity);
                     if (!decreased) {
-                        throw new RuntimeException("库存不足");
+                        throw new BusinessException("库存不足");
                     }
 
                     ProductDetail pd = productDetailService.findById(productDetailId);
@@ -129,7 +162,7 @@ public class OrderServiceImpl implements OrderService {
                     BigDecimal payable = originalTotal;
                     if (StringUtils.isNotBlank(userCouponId)) {
                         if (discountAmount == null) {
-                            throw new RuntimeException("优惠金额缺失");
+                            throw new BusinessException("优惠金额缺失");
                         }
                         // 锁定用户券（CAS：仅本人未使用的券可锁定），并绑定订单号
                         couponService.lockCoupon(userCouponId, order.getUserId(), orderNumber);
@@ -187,26 +220,26 @@ public class OrderServiceImpl implements OrderService {
         } catch (InterruptedException e) {
             // 恢复中断状态后包装抛出，并保留原始异常链路，便于排查
             Thread.currentThread().interrupt();
-            throw new RuntimeException("创建订单被中断", e);
+            throw new BusinessException("创建订单被中断", e);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
             // 保留原始异常 cause，不再吞掉堆栈
-            throw new RuntimeException("创建订单失败", e);
+            throw new BusinessException("创建订单失败", e);
         }
     }
 
     @Override
     public List<Order> batchCreateOrders(List<Order> orders) {
         if (orders == null || orders.isEmpty()) {
-            throw new RuntimeException("下单商品不能为空");
+            throw new BusinessException("下单商品不能为空");
         }
         // 优惠券：单笔订单专用——整批至多一笔携带券，且整批仅一笔
         String userCouponId = null;
         for (Order o : orders) {
             if (StringUtils.isNotBlank(o.getCouponId())) {
                 if (userCouponId != null) {
-                    throw new RuntimeException("一次结算仅可使用一张优惠券");
+                    throw new BusinessException("一次结算仅可使用一张优惠券");
                 }
                 userCouponId = o.getCouponId();
             }
@@ -214,12 +247,12 @@ public class OrderServiceImpl implements OrderService {
         BigDecimal couponDiscount = null;
         if (userCouponId != null) {
             if (orders.size() > 1) {
-                throw new RuntimeException("优惠券仅支持单笔订单使用");
+                throw new BusinessException("优惠券仅支持单笔订单使用");
             }
             Order couponOrder = orders.get(0);
             ProductDetail pd = productDetailService.findById(couponOrder.getProductDetailId());
             if (pd == null) {
-                throw new RuntimeException("商品规格不存在");
+                throw new BusinessException("商品规格不存在");
             }
             int qty = couponOrder.getQuantity() != null && couponOrder.getQuantity() > 0
                     ? couponOrder.getQuantity() : 1;
@@ -230,7 +263,7 @@ public class OrderServiceImpl implements OrderService {
             // 前端传入的优惠额须与后端一致，防止伪造
             BigDecimal provided = couponOrder.getDiscountAmount();
             if (provided == null || provided.compareTo(computed) != 0) {
-                throw new RuntimeException("优惠金额校验失败");
+                throw new BusinessException("优惠金额校验失败");
             }
             couponDiscount = computed;
         }
@@ -248,14 +281,14 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public boolean cancelOrder(String orderNumber, Long userId) {
         if (StringUtils.isBlank(orderNumber)) {
-            throw new RuntimeException("订单号不能为空");
+            throw new BusinessException("订单号不能为空");
         }
         Order order = findByOrderNumber(orderNumber);
         if (order == null) {
-            throw new RuntimeException("订单不存在");
+            throw new BusinessException("订单不存在");
         }
         if (!order.getUserId().equals(userId)) {
-            throw new RuntimeException("无权操作此订单");
+            throw new BusinessException("无权操作此订单");
         }
         return closeAndRestoreStock(orderNumber, StockLogService.TYPE_ORDER_RESTORE);
     }
@@ -274,7 +307,7 @@ public class OrderServiceImpl implements OrderService {
             int updated = orderDAO.updateStatusWithGuard(
                     orderNumber, OrderStatus.TRADE_PAID_SUCCESS.name(), OrderStatus.TRADE_SHIPPED.name());
             if (updated <= 0) {
-                throw new RuntimeException("订单状态异常，无法发货（仅已付款订单可发货）");
+                throw new BusinessException("订单状态异常，无法发货（仅已付款订单可发货）");
             }
             return true;
         }));
@@ -287,16 +320,16 @@ public class OrderServiceImpl implements OrderService {
         }
         Order order = findByOrderNumber(orderNumber);
         if (order == null) {
-            throw new RuntimeException("订单不存在");
+            throw new BusinessException("订单不存在");
         }
         if (!order.getUserId().equals(userId)) {
-            throw new RuntimeException("无权操作此订单");
+            throw new BusinessException("无权操作此订单");
         }
         return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
             int updated = orderDAO.updateStatusWithGuard(
                     orderNumber, OrderStatus.TRADE_SHIPPED.name(), OrderStatus.TRADE_COMPLETED.name());
             if (updated <= 0) {
-                throw new RuntimeException("订单状态异常，无法确认收货（仅已发货订单可确认）");
+                throw new BusinessException("订单状态异常，无法确认收货（仅已发货订单可确认）");
             }
             return true;
         }));
@@ -309,17 +342,17 @@ public class OrderServiceImpl implements OrderService {
         }
         Order order = findByOrderNumber(orderNumber);
         if (order == null) {
-            throw new RuntimeException("订单不存在");
+            throw new BusinessException("订单不存在");
         }
         if (!order.getUserId().equals(userId)) {
-            throw new RuntimeException("无权操作此订单");
+            throw new BusinessException("无权操作此订单");
         }
         // 仅未发货的已付款订单可申请退款；已发货需走退货流程（本期未实现）
         return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
             int updated = orderDAO.updateStatusWithGuard(
                     orderNumber, OrderStatus.TRADE_PAID_SUCCESS.name(), OrderStatus.TRADE_REFUNDING.name());
             if (updated <= 0) {
-                throw new RuntimeException("订单状态异常，无法申请退款（仅未发货的已付款订单可申请）");
+                throw new BusinessException("订单状态异常，无法申请退款（仅未发货的已付款订单可申请）");
             }
             return true;
         }));
@@ -335,7 +368,7 @@ public class OrderServiceImpl implements OrderService {
             int updated = orderDAO.updateStatusWithGuard(
                     orderNumber, OrderStatus.TRADE_REFUNDING.name(), target);
             if (updated <= 0) {
-                throw new RuntimeException("订单状态异常，无法处理退款（仅退款中订单可处理）");
+                throw new BusinessException("订单状态异常，无法处理退款（仅退款中订单可处理）");
             }
             // 拒绝退款（回退已付款）：释放被核销的优惠券，使其可再次使用
             if (!approve) {
@@ -351,7 +384,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public Paging<Order> listByMerchant(Long merchantId, String status, int pageNum, int pageSize) {
         if (merchantId == null) {
-            throw new RuntimeException("商家信息缺失");
+            throw new BusinessException("商家信息缺失");
         }
         if (pageNum < 1) {
             pageNum = 1;
@@ -389,22 +422,18 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public Map<String, Object> merchantStats(Long merchantId) {
         if (merchantId == null) {
-            throw new RuntimeException("商家信息缺失");
+            throw new BusinessException("商家信息缺失");
         }
         // 今日零点（本地时区）
         Date today = Date.from(java.time.LocalDate.now().atStartOfDay()
                 .atZone(java.time.ZoneId.systemDefault()).toInstant());
-        // 已支付口径：已付款 / 已发货 / 已完成
-        String[] paidStatuses = {
-                OrderStatus.TRADE_PAID_SUCCESS.name(),
-                OrderStatus.TRADE_SHIPPED.name(),
-                OrderStatus.TRADE_COMPLETED.name()
-        };
+        // 已支付口径：统一使用 OrderStatus.paidRevenueStatuses()（P1-7，与看板/日报一致）
+        List<String> paidStatuses = OrderStatus.paidRevenueStatuses();
         // P2：GROUP BY 一次聚合替代循环 6 次 SUM（配合 (merchant_id,status,gmt_created) 联合索引）
         BigDecimal paidRevenue = sumAggregateAmount(
-                orderDAO.sumByMerchantAndStatuses(merchantId, Arrays.asList(paidStatuses), null));
+                orderDAO.sumByMerchantAndStatuses(merchantId, paidStatuses, null));
         BigDecimal todayRevenue = sumAggregateAmount(
-                orderDAO.sumByMerchantAndStatuses(merchantId, Arrays.asList(paidStatuses), today));
+                orderDAO.sumByMerchantAndStatuses(merchantId, paidStatuses, today));
         Map<String, Object> stats = new HashMap<>();
         stats.put("productCount", productService.queryMerchantPage(merchantId, null, null, 1, 1).getTotalCount());
         stats.put("orderCount", orderDAO.countByMerchantId(merchantId));
@@ -434,17 +463,17 @@ public class OrderServiceImpl implements OrderService {
     /** 商家订单归属校验：订单必须属于该商家店铺 */
     private void assertMerchantOwnership(Long merchantId, String orderNumber) {
         if (merchantId == null) {
-            throw new RuntimeException("商家信息缺失");
+            throw new BusinessException("商家信息缺失");
         }
         if (StringUtils.isBlank(orderNumber)) {
             throw new IllegalArgumentException("订单号不能为空");
         }
         OrderDO orderDO = orderDAO.findByOrderNumber(orderNumber);
         if (orderDO == null) {
-            throw new RuntimeException("订单不存在");
+            throw new BusinessException("订单不存在");
         }
         if (!merchantId.equals(orderDO.getMerchantId())) {
-            throw new RuntimeException("无权操作其他店铺的订单");
+            throw new BusinessException("无权操作其他店铺的订单");
         }
     }
 
@@ -458,15 +487,15 @@ public class OrderServiceImpl implements OrderService {
         return transactionTemplate.execute(status -> {
             OrderDO orderDO = orderDAO.findByOrderNumber(orderNumber);
             if (orderDO == null) {
-                throw new RuntimeException("订单不存在");
+                throw new BusinessException("订单不存在");
             }
             if (!OrderStatus.WAIT_BUYER_PAY.name().equals(orderDO.getStatus())) {
-                throw new RuntimeException("订单状态异常，无法关闭");
+                throw new BusinessException("订单状态异常，无法关闭");
             }
             // 原子更新：仅待付款 → 已关闭（防并发支付成功）
             int updated = orderDAO.updateStatusIfWaitPay(orderNumber, OrderStatus.TRADE_CLOSED.name());
             if (updated <= 0) {
-                throw new RuntimeException("订单状态已变化，请刷新后重试");
+                throw new BusinessException("订单状态已变化，请刷新后重试");
             }
             // 回滚库存
             int quantity = orderDO.getQuantity() != null && orderDO.getQuantity() > 0 ? orderDO.getQuantity() : 1;
@@ -541,7 +570,26 @@ public class OrderServiceImpl implements OrderService {
         if (!OrderStatus.isValid(status)) {
             throw new IllegalArgumentException("订单状态不合法：" + status);
         }
-        return orderDAO.updateStatus(orderNumber, status) > 0;
+        // P1-6：状态机守卫——先读当前状态，校验目标转移是否在白名单内，CAS 更新
+        Order order = findByOrderNumber(orderNumber);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        OrderStatus from = order.getStatus();
+        if (from == null) {
+            throw new BusinessException("订单当前状态异常，无法变更");
+        }
+        OrderStatus to = OrderStatus.valueOf(status);
+        Set<OrderStatus> allowed = ADMIN_TRANSITIONS.getOrDefault(from, Collections.emptySet());
+        if (!allowed.contains(to)) {
+            throw new BusinessException("不允许的状态变更：" + from + " → " + to);
+        }
+        // CAS：仅当前状态仍为 from 时才更新，防止与支付/发货/退款等并发流程互相覆盖
+        int updated = orderDAO.updateStatusWithGuard(orderNumber, from.name(), to.name());
+        if (updated <= 0) {
+            throw new BusinessException("订单状态已变化，请刷新后重试");
+        }
+        return true;
     }
 
     @Override
@@ -554,7 +602,8 @@ public class OrderServiceImpl implements OrderService {
         if (days < 1 || days > 90) {
             days = 7;
         }
-        return orderDAO.dailySalesReport(days, OrderStatus.TRADE_PAID_SUCCESS.name());
+        // P1-7：统一已付营收口径（已付款/已发货/已完成），与看板、商家统计一致
+        return orderDAO.dailySalesReportByStatuses(days, OrderStatus.paidRevenueStatuses());
     }
 
     @Override
@@ -602,6 +651,15 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public BigDecimal sumTotalPriceByStatus(String status) {
         return orderDAO.sumTotalPriceByStatus(status);
+    }
+
+    @Override
+    public BigDecimal sumTotalPriceByStatuses(List<String> statuses) {
+        if (statuses == null || statuses.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal sum = orderDAO.sumTotalPriceByStatuses(statuses);
+        return sum == null ? BigDecimal.ZERO : sum;
     }
 
     @Override

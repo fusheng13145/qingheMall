@@ -12,10 +12,12 @@ export function calcCouponDiscount(c, orderTotal) {
   const total = Number(orderTotal || 0)
   const threshold = Number(c.threshold != null ? c.threshold : c.couponThreshold || 0)
   if (total < threshold) return 0
+  // 类型字段兼容两种形态：UserCouponDO 为 couponType，CouponDO 为 type
+  const type = c.couponType || c.type
   let discount = 0
-  if (c.couponType === 'FULL_REDUCTION') {
+  if (type === 'FULL_REDUCTION') {
     discount = Math.min(Number(c.couponAmount != null ? c.couponAmount : c.amount || 0), total)
-  } else if (c.couponType === 'DISCOUNT') {
+  } else if (type === 'DISCOUNT') {
     const rate = Number(c.couponDiscount != null ? c.couponDiscount : c.discount || 1)
     let raw = total * (1 - rate)
     const max = c.couponMaxDiscount != null ? c.couponMaxDiscount : c.maxDiscount
@@ -35,12 +37,14 @@ export function couponTypeText(type) {
 
 /** 券规则描述（展示用） */
 export function couponRuleText(c) {
-  if (c.couponType === 'FULL_REDUCTION') {
+  // 类型字段兼容两种形态：UserCouponDO 为 couponType，CouponDO 为 type
+  const type = (c && (c.couponType || c.type)) || ''
+  if (type === 'FULL_REDUCTION') {
     const amt = Number(c.couponAmount != null ? c.couponAmount : c.amount || 0)
     const th = Number(c.threshold != null ? c.threshold : c.couponThreshold || 0)
     return th > 0 ? `满${th}减${amt}` : `无门槛减${amt}`
   }
-  if (c.couponType === 'DISCOUNT') {
+  if (type === 'DISCOUNT') {
     const rate = Number(c.couponDiscount != null ? c.couponDiscount : c.discount || 1)
     const percent = Math.round(rate * 100)
     const max = c.couponMaxDiscount != null ? c.couponMaxDiscount : c.maxDiscount

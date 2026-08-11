@@ -3,6 +3,14 @@
 .env.*
 !.env.example
 
+# HTTPS 证书与私钥（P1-3）：deploy/ssl 仅保留说明文档，证书一律不入库
+deploy/ssl/*
+!deploy/ssl/README.md
+*.pem
+*.key
+*.crt
+*.p12
+
 # ============ IDE 配置 ============
 .idea/
 .vscode/
@@ -22,6 +30,7 @@ backend/upload/
 # ============ 前端构建产物 ============
 frontend/node_modules/
 frontend/dist/
+frontend/coverage/
 frontend/dist-ali/
 frontend/dist-pay/
 frontend/dist_old_*/

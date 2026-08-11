@@ -97,6 +97,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { toast, apiError } from '../../utils/toast'
 import { createCoupon, listCoupons, toggleCoupon } from '../../api/admin'
 import { couponRuleText } from '../../utils/coupon'
 
@@ -145,25 +146,25 @@ async function loadList() {
     const res = await listCoupons(1, 50)
     list.value = (res.data && res.data.data) || []
   } catch (e) {
-    alert('加载列表失败：' + (e.message || '请稍后重试'))
+    apiError(e, '加载列表失败')
   }
 }
 
 function handleCreate() {
   if (!form.value.name) {
-    alert('请填写券名称')
+    toast.warning('请填写券名称')
     return
   }
   if (!form.value.startTime || !form.value.endTime) {
-    alert('请选择生效起止时间')
+    toast.warning('请选择生效起止时间')
     return
   }
   if (new Date(form.value.endTime) <= new Date(form.value.startTime)) {
-    alert('结束时间须晚于开始时间')
+    toast.warning('结束时间须晚于开始时间')
     return
   }
   if (Number(form.value.total) < 0) {
-    alert('发放总量不能为负')
+    toast.warning('发放总量不能为负')
     return
   }
   creating.value = true
@@ -182,12 +183,12 @@ function handleCreate() {
   }
   createCoupon(payload)
     .then(() => {
-      alert('创建成功')
+      toast.success('创建成功')
       loadList()
       resetForm()
     })
     .catch(e => {
-      alert('创建失败：' + (e.message || '请稍后重试'))
+      apiError(e, '创建失败')
     })
     .finally(() => {
       creating.value = false
@@ -198,7 +199,7 @@ function handleToggle(c) {
   const next = c.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
   toggleCoupon(c.id, next)
     .then(() => loadList())
-    .catch(e => alert('操作失败：' + (e.message || '请稍后重试')))
+    .catch(e => apiError(e, '操作失败'))
 }
 
 function resetForm() {

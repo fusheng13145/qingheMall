@@ -60,6 +60,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { apiError } from '../../utils/toast'
 import { getUserList, updateUserRole } from '../../api/admin'
 
 const users = ref([])
@@ -81,7 +82,7 @@ async function loadUsers() {
     totalCount.value = paging.totalCount || 0
     totalPage.value = paging.totalPage || 1
   } catch (e) {
-    alert('加载用户列表失败：' + (e.message || '请稍后重试'))
+    apiError(e, '加载用户列表失败')
   }
 }
 
@@ -117,7 +118,7 @@ async function handleRoleChange(user, newRole) {
     await updateUserRole(user.id, newRole)
     user.role = newRole
   } catch (e) {
-    alert('角色修改失败：' + (e.message || '请稍后重试'))
+    apiError(e, '角色修改失败')
   }
 }
 </script>

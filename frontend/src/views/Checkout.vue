@@ -86,8 +86,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { toast, apiError } from '../utils/toast'
 import { useRouter } from 'vue-router'
-import { listCart, clearSelectedCart } from '../api/cart'
 import { batchAddOrders } from '../api/order'
 import { getDefaultAddress } from '../api/address'
 import { availableCoupons } from '../api/coupon'
@@ -95,9 +95,10 @@ import { calcCouponDiscount, couponRuleText } from '../utils/coupon'
 import { useCartStore } from '../stores/cart'
 
 const router = useRouter()
+// P2-15：结算页直接消费 store 中的已勾选条目，与购物车页共享同一数据源
 const cartStore = useCartStore()
 
-const items = ref([])
+const items = computed(() => cartStore.selectedItems)
 const submitting = ref(false)
 const receiver = ref({ name: '', phone: '', address: '' })
 
@@ -124,8 +125,7 @@ function formatSize(size) {
 
 onMounted(async () => {
   try {
-    const res = await listCart()
-    items.value = (res.data || []).filter(i => i.selected)
+    await cartStore.fetchItems()
     // 单笔订单时拉取可用券（多商品不支持用券，避免跨单分摊）
     if (items.value.length === 1) {
       try {
@@ -134,7 +134,7 @@ onMounted(async () => {
       } catch (e) { /* 优惠券非强依赖，忽略 */ }
     }
   } catch (e) {
-    alert('加载购物车失败：' + (e.message || '请稍后重试'))
+    apiError(e, '加载购物车失败')
   }
   // 有默认收货地址时自动填充（M3-3 用户中心地址簿）
   try {
@@ -160,11 +160,11 @@ function validate() {
 async function handleSubmit() {
   const err = validate()
   if (err) {
-    alert(err)
+    toast.warning(err)
     return
   }
   if (items.value.length === 0) {
-    alert('没有可提交的商品')
+    toast.warning('没有可提交的商品')
     return
   }
   submitting.value = true
@@ -182,15 +182,14 @@ async function handleSubmit() {
       orders[0].discountAmount = selectedDiscount.value
     }
     await batchAddOrders(orders)
-    // 下单成功：清空购物车已勾选条目
+    // 下单成功：清空购物车已勾选条目（store 内同步角标；清理失败不影响主流程）
     try {
-      await clearSelectedCart()
-    } catch (e) { /* 清理失败不影响主流程 */ }
-    cartStore.refreshCount()
-    alert('下单成功！请前往订单中心完成支付')
+      await cartStore.clearSelected()
+    } catch (e) { /* 忽略清理失败 */ }
+    toast.success('下单成功！请前往订单中心完成支付')
     router.push('/orders')
   } catch (e) {
-    alert('下单失败：' + (e.message || '请稍后重试'))
+    apiError(e, '下单失败')
   } finally {
     submitting.value = false
   }

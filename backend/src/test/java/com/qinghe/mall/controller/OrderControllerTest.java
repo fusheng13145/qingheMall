@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -34,6 +36,9 @@ class OrderControllerTest {
 
     @Mock
     private OrderService orderService;
+
+    @Mock
+    private com.qinghe.mall.service.RefundService refundService;
 
     @InjectMocks
     private OrderController orderController;
@@ -136,10 +141,25 @@ class OrderControllerTest {
 
     @Test
     void applyRefund_authenticated_delegates() throws Exception {
-        when(orderService.applyRefund("O1", 1L)).thenReturn(true);
-        mockMvc.perform(post("/api/order/refund/apply").session(session(1L)).param("orderNumber", "O1"))
-                .andExpect(jsonPath("$.code").value(200));
-        verify(orderService).applyRefund("O1", 1L);
+        com.qinghe.mall.model.RefundRequest created = new com.qinghe.mall.model.RefundRequest();
+        created.setId("r1");
+        created.setStatus("PENDING");
+        when(refundService.apply(eq("O1"), eq(1L), nullable(String.class), nullable(String.class)))
+                .thenReturn(created);
+        mockMvc.perform(post("/api/order/refund/apply").session(session(1L))
+                        .param("orderNumber", "O1")
+                        .param("reason", "不想要了"))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value("r1"));
+        verify(refundService).apply("O1", 1L, null, "不想要了");
+    }
+
+    @Test
+    void applyRefund_unauthenticated_401() throws Exception {
+        mockMvc.perform(post("/api/order/refund/apply").param("orderNumber", "O1"))
+                .andExpect(jsonPath("$.code").value(401));
+        verify(refundService, org.mockito.Mockito.never())
+                .apply(anyString(), anyLong(), nullable(String.class), nullable(String.class));
     }
 
     @Test

@@ -171,6 +171,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { toast, apiError } from '../utils/toast'
 import { useUserStore } from '../stores/user'
 import { updateProfileApi } from '../api/user'
 import { getMerchantInfo, applyMerchant } from '../api/merchant'
@@ -218,9 +219,9 @@ async function saveProfile() {
       profile.value = { ...profile.value, nickName: res.data.nickName, avatar: res.data.avatar || '' }
       userStore.nickName = res.data.nickName || userStore.userName
     }
-    alert('资料已更新')
+    toast.success('资料已更新')
   } catch (e) {
-    alert('保存失败：' + (e.message || '请稍后重试'))
+    apiError(e, '保存失败')
   } finally {
     saving.value = false
   }
@@ -252,15 +253,15 @@ function openApply() {
 }
 
 async function submitApply() {
-  if (!applyForm.shopName) return alert('请填写店铺名称')
+  if (!applyForm.shopName) return toast.warning('请填写店铺名称')
   applying.value = true
   try {
     await applyMerchant(applyForm.shopName, applyForm.shopLogo, applyForm.shopDesc)
     showApply.value = false
     await loadMerchant()
-    alert('开店申请已提交，平台审核通过后即可经营')
+    toast.success('开店申请已提交，平台审核通过后即可经营')
   } catch (e) {
-    alert('提交失败：' + (e.message || '请稍后重试'))
+    apiError(e, '提交失败')
   } finally {
     applying.value = false
   }
@@ -271,7 +272,7 @@ async function loadAddresses() {
     const res = await listAddress()
     addresses.value = res.data || []
   } catch (e) {
-    alert('加载地址失败：' + (e.message || '请稍后重试'))
+    apiError(e, '加载地址失败')
   }
 }
 
@@ -285,9 +286,9 @@ function openEdit(addr) {
 }
 
 async function saveAddress() {
-  if (!editForm.receiverName) return alert('请填写收货人')
-  if (!/^1\d{10}$/.test(editForm.receiverPhone)) return alert('请输入正确的手机号')
-  if (!editForm.receiverAddress) return alert('请填写收货地址')
+  if (!editForm.receiverName) return toast.warning('请填写收货人')
+  if (!/^1\d{10}$/.test(editForm.receiverPhone)) return toast.warning('请输入正确的手机号')
+  if (!editForm.receiverAddress) return toast.warning('请填写收货地址')
   saving.value = true
   try {
     if (editingId.value) {
@@ -298,7 +299,7 @@ async function saveAddress() {
     showEdit.value = false
     await loadAddresses()
   } catch (e) {
-    alert('保存失败：' + (e.message || '请稍后重试'))
+    apiError(e, '保存失败')
   } finally {
     saving.value = false
   }
@@ -309,7 +310,7 @@ async function handleSetDefault(addr) {
     await setDefaultAddress(addr.id)
     await loadAddresses()
   } catch (e) {
-    alert('操作失败：' + (e.message || '请稍后重试'))
+    apiError(e, '操作失败')
   }
 }
 
@@ -319,7 +320,7 @@ async function handleDelete(addr) {
     await deleteAddress(addr.id)
     await loadAddresses()
   } catch (e) {
-    alert('删除失败：' + (e.message || '请稍后重试'))
+    apiError(e, '删除失败')
   }
 }
 

@@ -79,6 +79,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { apiError } from '../utils/toast'
 import { useRoute, useRouter } from 'vue-router'
 import { getOrder } from '../api/order'
 import { createPay, mockPay, queryPay } from '../api/payment'
@@ -121,7 +122,7 @@ async function loadOrder() {
     const res = await getOrder(orderNumber())
     order.value = res.data
   } catch (e) {
-    alert('加载订单失败：' + (e.message || '请稍后重试'))
+    apiError(e, '加载订单失败')
     router.push('/orders')
   }
 }
@@ -140,7 +141,7 @@ async function initPay() {
     statusText.value = '等待扫码支付...'
     startPolling()
   } catch (e) {
-    alert('创建支付失败：' + (e.message || '请稍后重试'))
+    apiError(e, '创建支付失败')
   }
 }
 
@@ -177,7 +178,7 @@ async function queryNow() {
       statusText.value = '尚未检测到支付，请扫码后点击「我已支付」'
     }
   } catch (e) {
-    alert('查询失败：' + (e.message || '请稍后重试'))
+    apiError(e, '查询失败')
   } finally {
     querying.value = false
   }
@@ -189,7 +190,7 @@ async function handleMockPay() {
     await mockPay(orderNumber())
     router.replace({ name: 'PaySuccess', query: { orderNumber: orderNumber() } })
   } catch (e) {
-    alert('支付失败：' + (e.message || '请稍后重试'))
+    apiError(e, '支付失败')
   } finally {
     paying.value = false
   }

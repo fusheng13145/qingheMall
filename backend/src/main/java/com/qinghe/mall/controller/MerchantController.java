@@ -1,8 +1,10 @@
 package com.qinghe.mall.controller;
 
+import com.qinghe.mall.exception.BusinessException;
 import com.qinghe.mall.config.RateLimit;
 import com.qinghe.mall.dataobject.MerchantDO;
 import com.qinghe.mall.dataobject.UserDO;
+import com.qinghe.mall.exception.AuthException;
 import com.qinghe.mall.model.Order;
 import com.qinghe.mall.model.Paging;
 import com.qinghe.mall.model.Product;
@@ -36,6 +38,12 @@ public class MerchantController {
 
     @Autowired
     private OrderService orderService;
+
+    @Autowired
+    private com.qinghe.mall.service.LogisticsService logisticsService;
+
+    @Autowired
+    private com.qinghe.mall.service.RefundService refundService;
 
     /** 店铺信息与入驻状态（无需 ACTIVE，供前端展示审核中/驳回原因） */
     @GetMapping("/info")
@@ -89,10 +97,10 @@ public class MerchantController {
     public Result<Product> saveProduct(@RequestBody Product product, HttpServletRequest request) {
         MerchantDO merchant = checkMerchant(request);
         if (StringUtils.isBlank(product.getName())) {
-            throw new RuntimeException("商品名称不能为空");
+            throw new BusinessException("商品名称不能为空");
         }
         if (product.getPrice() == null || product.getPrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
-            throw new RuntimeException("商品价格必须大于 0");
+            throw new BusinessException("商品价格必须大于 0");
         }
         if (StringUtils.isBlank(product.getId())) {
             // 新增：默认上架
@@ -102,10 +110,10 @@ public class MerchantController {
         } else {
             Product existing = productService.findById(product.getId());
             if (existing == null) {
-                throw new RuntimeException("商品不存在");
+                throw new BusinessException("商品不存在");
             }
             if (!merchant.getId().equals(existing.getMerchantId())) {
-                throw new RuntimeException("无权操作其他店铺的商品");
+                throw new BusinessException("无权操作其他店铺的商品");
             }
         }
         product.setMerchantId(merchant.getId());
@@ -122,14 +130,14 @@ public class MerchantController {
                                       HttpServletRequest request) {
         MerchantDO merchant = checkMerchant(request);
         if (!"ON".equals(status) && !"OFF".equals(status)) {
-            throw new RuntimeException("非法的商品状态");
+            throw new BusinessException("非法的商品状态");
         }
         Product existing = productService.findById(productId);
         if (existing == null) {
-            throw new RuntimeException("商品不存在");
+            throw new BusinessException("商品不存在");
         }
         if (!merchant.getId().equals(existing.getMerchantId())) {
-            throw new RuntimeException("无权操作其他店铺的商品");
+            throw new BusinessException("无权操作其他店铺的商品");
         }
         Product update = new Product();
         update.setId(productId);
@@ -148,23 +156,53 @@ public class MerchantController {
         return Result.success(orderService.listByMerchant(merchant.getId(), status, pageNum, pageSize));
     }
 
-    /** 发货：仅本店 PAID_SUCCESS → SHIPPED */
+    /**
+     * 发货（P2-18 升级）：携带 company + trackingNumber 时建立物流档案（同事务原子），
+     * 两者缺省时保留旧的纯状态发货（向后兼容）。仅本店订单。
+     */
     @RateLimit(rate = 20, message = "操作过于频繁，请稍后再试")
     @PostMapping("/order/ship")
-    public Result<Void> ship(@RequestParam("orderNumber") String orderNumber, HttpServletRequest request) {
+    public Result<Void> ship(@RequestParam("orderNumber") String orderNumber,
+                             @RequestParam(value = "company", required = false) String company,
+                             @RequestParam(value = "trackingNumber", required = false) String trackingNumber,
+                             HttpServletRequest request) {
         MerchantDO merchant = checkMerchant(request);
-        orderService.shipMerchantOrder(merchant.getId(), orderNumber);
+        if (StringUtils.isNotBlank(company) && StringUtils.isNotBlank(trackingNumber)) {
+            assertOrderOwnership(merchant.getId(), orderNumber);
+            logisticsService.ship(orderNumber, company, trackingNumber);
+        } else {
+            orderService.shipMerchantOrder(merchant.getId(), orderNumber);
+        }
         return Result.success();
     }
 
-    /** 处理退款：仅本店 REFUNDING → REFUNDED(approve) / 回退 PAID_SUCCESS */
+    /**
+     * 推进物流状态（P2-18）：SHIPPED→IN_TRANSIT→DELIVERING→SIGNED，每次追加一条轨迹。
+     * 未对接承运商接口，由商家手动更新模拟轨迹推进。仅本店订单。
+     */
+    @RateLimit(rate = 20, message = "操作过于频繁，请稍后再试")
+    @PostMapping("/logistics/advance")
+    public Result<com.qinghe.mall.model.Logistics> advanceLogistics(
+            @RequestParam("orderNumber") String orderNumber, HttpServletRequest request) {
+        MerchantDO merchant = checkMerchant(request);
+        assertOrderOwnership(merchant.getId(), orderNumber);
+        return Result.success(logisticsService.advance(orderNumber));
+    }
+
+    /**
+     * 处理退款（P2-18 升级）：经 RefundService 审核申请单——
+     * 通过：订单置已退款 + 库存回补 + 释放优惠券；驳回：订单回退申请前状态。
+     * comment 为审核意见（驳回时向用户展示）。仅本店订单。
+     */
     @RateLimit(rate = 20, message = "操作过于频繁，请稍后再试")
     @PostMapping("/order/refund/process")
     public Result<Void> processRefund(@RequestParam("orderNumber") String orderNumber,
                                       @RequestParam(value = "approve", defaultValue = "true") boolean approve,
+                                      @RequestParam(value = "comment", required = false) String comment,
                                       HttpServletRequest request) {
         MerchantDO merchant = checkMerchant(request);
-        orderService.processMerchantRefund(merchant.getId(), orderNumber, approve);
+        assertOrderOwnership(merchant.getId(), orderNumber);
+        refundService.review(orderNumber, approve, comment);
         return Result.success();
     }
 
@@ -175,28 +213,39 @@ public class MerchantController {
         return Result.success(orderService.merchantStats(merchant.getId()));
     }
 
-    /** 商家权限守卫：登录 + role=MERCHANT + 店铺存在且 ACTIVE */
+    /** 商家订单归属校验（P2-18）：订单必须存在且属于本店，否则拒绝操作 */
+    private void assertOrderOwnership(Long merchantId, String orderNumber) {
+        Order order = orderService.findByOrderNumber(orderNumber);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        if (!merchantId.equals(order.getMerchantId())) {
+            throw new BusinessException("无权操作其他店铺的订单");
+        }
+    }
+
+    /** 商家权限守卫：登录 + role=MERCHANT + 店铺存在且 ACTIVE（P1-8：401/403 语义） */
     private MerchantDO checkMerchant(HttpServletRequest request) {
         Object userIdObj = request.getSession().getAttribute("userId");
         if (userIdObj == null) {
-            throw new RuntimeException("未登录");
+            throw AuthException.unauthorized("未登录");
         }
         // 显式断言角色（P2-6：仅 role=MERCHANT 可进入商家经营接口）
         if (!com.qinghe.mall.dataobject.UserDO.ROLE_MERCHANT.equals(request.getSession().getAttribute("role"))) {
-            throw new RuntimeException("无商家权限");
+            throw AuthException.forbidden("无商家权限");
         }
         MerchantDO merchant = merchantService.getByUserId((Long) userIdObj);
         if (merchant == null) {
-            throw new RuntimeException("您还不是入驻商家，请先申请开店");
+            throw AuthException.forbidden("您还不是入驻商家，请先申请开店");
         }
         if (MerchantDO.STATUS_PENDING.equals(merchant.getStatus())) {
-            throw new RuntimeException("入驻申请审核中，通过后即可经营");
+            throw AuthException.forbidden("入驻申请审核中，通过后即可经营");
         }
         if (MerchantDO.STATUS_REJECTED.equals(merchant.getStatus())) {
-            throw new RuntimeException("入驻申请未通过：" + (merchant.getRejectReason() == null ? "" : merchant.getRejectReason()));
+            throw AuthException.forbidden("入驻申请未通过：" + (merchant.getRejectReason() == null ? "" : merchant.getRejectReason()));
         }
         if (!MerchantDO.STATUS_ACTIVE.equals(merchant.getStatus())) {
-            throw new RuntimeException("店铺已被禁用，请联系平台");
+            throw AuthException.forbidden("店铺已被禁用，请联系平台");
         }
         return merchant;
     }

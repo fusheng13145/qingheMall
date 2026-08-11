@@ -54,6 +54,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { toast, apiError } from '../../utils/toast'
 import { listMerchants, auditMerchant } from '../../api/admin'
 
 const tabs = [
@@ -100,7 +101,7 @@ async function load(page) {
     totalCount.value = res.data.totalCount
     merchants.value = res.data.data
   } catch (e) {
-    alert(e.message || '加载失败')
+    apiError(e, '加载失败')
   } finally {
     loading.value = false
   }
@@ -112,7 +113,7 @@ async function audit(m, approve) {
     reason = window.prompt(`驳回「${m.shopName}」的入驻申请，请填写原因：`, '资料不完整')
     if (reason === null) return
     if (!reason.trim()) {
-      alert('驳回必须填写原因')
+      toast.warning('驳回必须填写原因')
       return
     }
   } else if (!confirm(`确认通过「${m.shopName}」的入驻申请？`)) {
@@ -120,10 +121,10 @@ async function audit(m, approve) {
   }
   try {
     await auditMerchant(m.id, approve, reason.trim())
-    alert(approve ? '已通过审核，商家可开始经营' : '已驳回')
+    toast.success(approve ? '已通过审核，商家可开始经营' : '已驳回')
     load(pageNum.value)
   } catch (e) {
-    alert(e.message || '操作失败')
+    apiError(e, '操作失败')
   }
 }
 

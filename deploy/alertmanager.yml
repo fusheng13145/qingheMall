@@ -1,0 +1,53 @@
+# ============================================================
+# Alertmanager 配置（P1-9 告警出口）
+# 由 docker-compose 挂载到 /etc/alertmanager/alertmanager.yml
+# 上游：Prometheus alerting → alertmanager:9093
+#
+# 通知渠道说明：
+#   默认配置 webhook 接收器（占位地址）。接入真实渠道时二选一：
+#   1) 钉钉/企微：部署 prometheus-webhook-dingtalk 等适配器，
+#      将下方 url 替换为适配器地址（如 http://dingtalk:8060/dingtalk/ops/send）；
+#   2) 邮件：取消 email receiver 注释并补齐 SMTP 信息。
+#   未接入真实渠道前，告警仍可在 Alertmanager UI（127.0.0.1:9093）查看。
+# ============================================================
+global:
+  resolve_timeout: 5m
+
+route:
+  # 同一告警名 + 严重级别聚合为一组，避免告警风暴
+  group_by: ["alertname", "severity"]
+  group_wait: 30s        # 首次等待聚合
+  group_interval: 5m     # 同组新增告警间隔
+  repeat_interval: 4h    # 未恢复告警重复提醒间隔
+  receiver: default-webhook
+  routes:
+    # critical（如 BackendDown）缩短重复间隔，更快重复提醒
+    - matchers:
+        - severity = critical
+      receiver: default-webhook
+      repeat_interval: 1h
+
+receivers:
+  - name: default-webhook
+    webhook_configs:
+      # ⚠️ 占位地址：请替换为真实 webhook（钉钉/企微适配器或自有告警网关）
+      - url: "http://alert-webhook:8060/dingtalk/ops/send"
+        send_resolved: true
+
+  # ---- 邮件渠道（可选，按需启用并补齐 SMTP 信息）----
+  # - name: email
+  #   email_configs:
+  #     - to: "ops@example.com"
+  #       from: "alertmanager@example.com"
+  #       smarthost: "smtp.example.com:465"
+  #       auth_username: "alertmanager@example.com"
+  #       auth_password: "SMTP 授权码"
+  #       require_tls: true
+
+inhibit_rules:
+  # 实例已宕机（BackendDown）时，抑制其派生的错误率/延迟告警，减少噪音
+  - source_matchers:
+      - alertname = BackendDown
+    target_matchers:
+      - alertname =~ "HighHttpErrorRate|HighHttpLatency"
+    equal: ["application"]

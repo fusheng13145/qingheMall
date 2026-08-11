@@ -1,5 +1,6 @@
 package com.qinghe.mall.service.impl;
 
+import com.qinghe.mall.exception.BusinessException;
 import com.qinghe.mall.config.ProductCacheService;
 import com.qinghe.mall.dao.ProductDetailDAO;
 import com.qinghe.mall.dataobject.ProductDetailDO;
@@ -111,7 +112,7 @@ public class ProductDetailServiceImpl implements ProductDetailService {
         }
         for (ProductDetail detail : details) {
             if (detail == null || detail.getPrice() == null || detail.getStock() == null) {
-                throw new RuntimeException("规格信息不完整（价格/库存必填）");
+                throw new BusinessException("规格信息不完整（价格/库存必填）");
             }
             ProductDetailDO detailDO = new ProductDetailDO();
             detailDO.setId(UUIDUtils.uuid());

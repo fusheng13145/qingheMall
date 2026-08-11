@@ -57,11 +57,25 @@
               取消订单
             </button>
             <button
-              v-if="order.status === 'TRADE_PAID_SUCCESS'"
+              v-if="['TRADE_PAID_SUCCESS', 'TRADE_SHIPPED', 'TRADE_COMPLETED'].includes(order.status)"
               class="btn-refund"
-              @click="handleApplyRefund(order)"
+              @click="openRefundModal(order)"
             >
-              申请退款
+              {{ order.status === 'TRADE_PAID_SUCCESS' ? '申请退款' : '申请退货退款' }}
+            </button>
+            <button
+              v-if="['TRADE_SHIPPED', 'TRADE_COMPLETED', 'TRADE_REFUNDED'].includes(order.status)"
+              class="btn-comment"
+              @click="openLogistics(order)"
+            >
+              查看物流
+            </button>
+            <button
+              v-if="['TRADE_REFUNDING', 'TRADE_REFUNDED'].includes(order.status)"
+              class="btn-refund"
+              @click="openRefundDetail(order)"
+            >
+              退款详情
             </button>
             <button
               v-if="order.status === 'TRADE_SHIPPED'"
@@ -177,14 +191,112 @@
         </div>
       </div>
     </div>
+
+    <!-- 退款申请弹窗 -->
+    <div v-if="refundOrder" class="modal-overlay" @click.self="refundOrder = null">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>{{ refundOrder.status === 'TRADE_PAID_SUCCESS' ? '申请退款' : '申请退货退款' }}</h3>
+          <button class="modal-close" @click="refundOrder = null">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="detail-row">
+            <span class="detail-label">订单号</span>
+            <span class="detail-value mono">{{ refundOrder.orderNumber }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">退款类型</span>
+            <span class="detail-value">{{ refundOrder.status === 'TRADE_PAID_SUCCESS' ? '仅退款' : '退货退款' }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">退款金额</span>
+            <span class="detail-value discount-value">¥{{ formatPrice(refundOrder.totalPrice) }}</span>
+          </div>
+          <textarea v-model="refundReason" class="comment-textarea" rows="3" maxlength="200" placeholder="请填写退款原因（必填，最多 200 字）"></textarea>
+          <div class="modal-actions">
+            <button class="btn-cancel" @click="refundOrder = null">取消</button>
+            <button class="btn-submit" :disabled="refundSubmitting" @click="submitRefund">
+              {{ refundSubmitting ? '提交中...' : '提交申请' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 物流信息弹窗 -->
+    <div v-if="logisticsOrder" class="modal-overlay" @click.self="logisticsOrder = null">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>物流信息</h3>
+          <button class="modal-close" @click="logisticsOrder = null">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div v-if="logisticsLoading" class="modal-loading">加载中...</div>
+          <LogisticsTimeline v-else-if="logisticsData" :logistics="logisticsData" />
+          <div v-else class="modal-empty">暂无物流信息</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 退款详情弹窗 -->
+    <div v-if="refundDetailOrder" class="modal-overlay" @click.self="refundDetailOrder = null">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>退款详情</h3>
+          <button class="modal-close" @click="refundDetailOrder = null">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="detail-row">
+            <span class="detail-label">订单号</span>
+            <span class="detail-value mono">{{ refundDetailOrder.orderNumber }}</span>
+          </div>
+          <div v-if="refundDetailLoading" class="modal-loading">加载中...</div>
+          <div v-else-if="refundDetailList.length === 0" class="modal-empty">暂无退款记录</div>
+          <template v-else>
+            <div v-for="item in refundDetailList" :key="item.id" class="refund-item">
+              <div class="detail-row">
+                <span class="detail-label">类型</span>
+                <span class="detail-value">{{ refundTypeText(item.type) }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">状态</span>
+                <span class="detail-value"><span class="order-status" :class="refundStatusClass(item.status)">{{ refundStatusText(item.status) }}</span></span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">原因</span>
+                <span class="detail-value">{{ item.reason || '-' }}</span>
+              </div>
+              <div v-if="item.reviewComment" class="detail-row">
+                <span class="detail-label">商家备注</span>
+                <span class="detail-value">{{ item.reviewComment }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">申请时间</span>
+                <span class="detail-value">{{ formatTime(item.gmtCreated) }}</span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { toast, apiError } from '../utils/toast'
 import { useRouter } from 'vue-router'
 import { listOrders, cancelOrder, confirmReceipt, applyRefund } from '../api/order'
 import { addComment } from '../api/comment'
+import { trackLogistics } from '../api/logistics'
+import { listOrderRefunds } from '../api/refund'
+import LogisticsTimeline from '../components/common/LogisticsTimeline.vue'
 
 const router = useRouter()
 
@@ -203,6 +315,21 @@ const commentRating = ref(5)
 const commentContent = ref('')
 const submitting = ref(false)
 
+// 退款申请弹窗
+const refundOrder = ref(null)
+const refundReason = ref('')
+const refundSubmitting = ref(false)
+
+// 物流弹窗
+const logisticsOrder = ref(null)
+const logisticsData = ref(null)
+const logisticsLoading = ref(false)
+
+// 退款详情弹窗
+const refundDetailOrder = ref(null)
+const refundDetailList = ref([])
+const refundDetailLoading = ref(false)
+
 const ratingText = computed(() => {
   return ['', '很差', '较差', '一般', '满意', '非常满意'][commentRating.value] || ''
 })
@@ -214,6 +341,8 @@ const tabs = [
   { label: '待发货', value: 'TRADE_PAID_SUCCESS' },
   { label: '待收货', value: 'TRADE_SHIPPED' },
   { label: '已完成', value: 'TRADE_COMPLETED' },
+  { label: '退款中', value: 'TRADE_REFUNDING' },
+  { label: '已退款', value: 'TRADE_REFUNDED' },
   { label: '已关闭', value: 'TRADE_CLOSED' }
 ]
 
@@ -305,35 +434,104 @@ function handleCancel(order) {
   if (!confirm(`确定要取消订单 ${order.orderNumber} 吗？取消后库存将自动回滚。`)) return
   cancelOrder(order.orderNumber)
     .then(() => {
-      alert('订单已取消')
+      toast.success('订单已取消')
       loadOrders(currentPage.value)
     })
     .catch(e => {
-      alert('取消失败：' + (e.message || '请稍后重试'))
+      apiError(e, '取消失败')
     })
 }
 
-async function handleApplyRefund(order) {
-  if (!confirm(`确定要对订单 ${order.orderNumber} 申请退款吗？提交后将进入商家审核。`)) return
-  applyRefund(order.orderNumber)
-    .then(() => {
-      alert('退款申请已提交，等待商家处理')
-      loadOrders(currentPage.value)
-    })
-    .catch(e => {
-      alert('申请失败：' + (e.message || '请稍后重试'))
-    })
+// 退款申请：待发货订单仅退款，已发货/已完成订单退货退款（与后端 RefundService 推导逻辑一致）
+function openRefundModal(order) {
+  refundOrder.value = order
+  refundReason.value = ''
+}
+
+const refundTypeTextMap = {
+  REFUND_ONLY: '仅退款',
+  RETURN_REFUND: '退货退款'
+}
+
+function refundTypeText(type) {
+  return refundTypeTextMap[type] || type || '-'
+}
+
+const refundStatusTextMap = {
+  PENDING: '待商家审核',
+  APPROVED: '已通过',
+  REJECTED: '已拒绝'
+}
+
+function refundStatusText(status) {
+  return refundStatusTextMap[status] || status || '-'
+}
+
+function refundStatusClass(status) {
+  if (status === 'APPROVED') return 'status-completed'
+  if (status === 'REJECTED') return 'status-closed'
+  return 'status-refunding'
+}
+
+async function submitRefund() {
+  if (!refundReason.value.trim()) {
+    toast.warning('请填写退款原因')
+    return
+  }
+  const order = refundOrder.value
+  const type = order.status === 'TRADE_PAID_SUCCESS' ? 'REFUND_ONLY' : 'RETURN_REFUND'
+  refundSubmitting.value = true
+  try {
+    await applyRefund(order.orderNumber, refundReason.value.trim(), type)
+    toast.success('退款申请已提交，等待商家处理')
+    refundOrder.value = null
+    loadOrders(currentPage.value)
+  } catch (e) {
+    apiError(e, '申请失败')
+  } finally {
+    refundSubmitting.value = false
+  }
+}
+
+// 查看物流
+async function openLogistics(order) {
+  logisticsOrder.value = order
+  logisticsData.value = null
+  logisticsLoading.value = true
+  try {
+    const res = await trackLogistics(order.orderNumber)
+    logisticsData.value = res.data || null
+  } catch (e) {
+    apiError(e, '物流信息加载失败')
+  } finally {
+    logisticsLoading.value = false
+  }
+}
+
+// 退款详情（订单的退款申请历史）
+async function openRefundDetail(order) {
+  refundDetailOrder.value = order
+  refundDetailList.value = []
+  refundDetailLoading.value = true
+  try {
+    const res = await listOrderRefunds(order.orderNumber)
+    refundDetailList.value = res.data || []
+  } catch (e) {
+    apiError(e, '退款详情加载失败')
+  } finally {
+    refundDetailLoading.value = false
+  }
 }
 
 async function handleConfirmReceipt(order) {
   if (!confirm(`确认已收到订单 ${order.orderNumber} 的商品吗？`)) return
   confirmReceipt(order.orderNumber)
     .then(() => {
-      alert('已确认收货')
+      toast.success('已确认收货')
       loadOrders(currentPage.value)
     })
     .catch(e => {
-      alert('操作失败：' + (e.message || '请稍后重试'))
+      apiError(e, '操作失败')
     })
 }
 
@@ -349,7 +547,7 @@ function openComment(order) {
 
 async function submitComment() {
   if (!commentContent.value.trim()) {
-    alert('请填写评价内容')
+    toast.warning('请填写评价内容')
     return
   }
   submitting.value = true
@@ -361,11 +559,11 @@ async function submitComment() {
       rating: commentRating.value,
       content: commentContent.value.trim()
     })
-    alert('评价成功，感谢您的反馈！')
+    toast.success('评价成功，感谢您的反馈！')
     commentOrder.value = null
     loadOrders(currentPage.value)
   } catch (error) {
-    alert('评价失败：' + (error.message || '请稍后重试'))
+    apiError(error, '评价失败')
   } finally {
     submitting.value = false
   }
@@ -1010,5 +1208,28 @@ onMounted(() => {
 
 .empty-state p {
   font-size: 15px;
+}
+
+.modal-loading {
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+  padding: 24px 0;
+}
+
+.modal-empty {
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+  padding: 24px 0;
+}
+
+.refund-item {
+  padding: 12px 0;
+  border-top: 1px dashed var(--color-border-light);
+}
+
+.refund-item .detail-row {
+  margin-bottom: 6px;
 }
 </style>

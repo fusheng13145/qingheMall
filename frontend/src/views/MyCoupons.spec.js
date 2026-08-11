@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import MyCoupons from './MyCoupons.vue'
+import { toasts } from '../utils/toast'
 
 const { myCoupons } = vi.hoisted(() => ({ myCoupons: vi.fn() }))
 
@@ -21,7 +22,7 @@ function makeCoupon(overrides = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  global.alert = vi.fn()
+  toasts.splice(0, toasts.length)
 })
 
 describe('MyCoupons 我的优惠券页', () => {
@@ -65,11 +66,11 @@ describe('MyCoupons 我的优惠券页', () => {
     expect(wrapper.text()).toContain('暂无')
   })
 
-  it('加载失败 alert 提示', async () => {
+  it('加载失败 toast 提示', async () => {
     myCoupons.mockRejectedValue(new Error('net'))
     mount(MyCoupons)
     await flushPromises()
 
-    expect(global.alert).toHaveBeenCalled()
+    expect(toasts.some(t => t.type === 'error' && t.message.includes('加载失败'))).toBe(true)
   })
 })

@@ -14,6 +14,7 @@ vi.mock('../stores/user.js', () => ({
 }))
 
 import { authGuard } from './index'
+import router from './index'
 
 const guard = authGuard
 
@@ -96,5 +97,18 @@ describe('路由守卫：角色控制', () => {
     const next = vi.fn()
     await guard(makeTo({ meta: { requiresAuth: true, requiresMerchant: true } }), {}, next)
     expect(next).toHaveBeenCalledWith()
+  })
+})
+
+describe('路由表：404 兜底（P2-14）', () => {
+  it('未知路径解析到 NotFound', () => {
+    expect(router.resolve('/no-such-page').name).toBe('NotFound')
+    expect(router.resolve('/admin/x/y/deep').name).toBe('NotFound')
+  })
+
+  it('已知路径不受兜底影响', () => {
+    expect(router.resolve('/').name).toBe('Home')
+    expect(router.resolve('/products').name).toBe('Products')
+    expect(router.resolve('/admin/orders').name).toBe('AdminOrders')
   })
 })

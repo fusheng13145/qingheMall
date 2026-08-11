@@ -33,6 +33,19 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    globals: true
+    globals: true,
+    // P2-16：覆盖率门禁——低于阈值即测试失败，防止覆盖率回退
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{js,vue}'],
+      exclude: ['src/**/*.spec.js', 'src/main.js'],
+      reporters: ['text', 'lcov'],
+      thresholds: {
+        statements: 85,
+        lines: 85,
+        branches: 80,
+        functions: 75
+      }
+    }
   }
 })

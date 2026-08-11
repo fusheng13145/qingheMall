@@ -65,20 +65,20 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
+import { apiError } from '../utils/toast'
 import { useRouter } from 'vue-router'
-import { listCart, updateCartQuantity, updateCartSelected, removeCart } from '../api/cart'
 import { useCartStore } from '../stores/cart'
 
 const router = useRouter()
+// P2-15：购物车列表与变更动作统一由 store 管理（与 Checkout/角标共享同一数据源）
 const cartStore = useCartStore()
 
-const items = ref([])
-const loading = ref(true)
-
-const allSelected = computed(() => items.value.length > 0 && items.value.every(i => i.selected))
-const selectedItems = computed(() => items.value.filter(i => i.selected))
-const totalPrice = computed(() => selectedItems.value.reduce((sum, i) => sum + (i.price || 0) * i.quantity, 0))
+const items = computed(() => cartStore.items)
+const loading = computed(() => cartStore.loading)
+const allSelected = computed(() => cartStore.allSelected)
+const selectedItems = computed(() => cartStore.selectedItems)
+const totalPrice = computed(() => cartStore.selectedTotalPrice)
 
 function formatPrice(p) {
   return Number(p || 0).toFixed(2)
@@ -89,61 +89,38 @@ function formatSize(size) {
   return String(Number(size))
 }
 
-async function loadCart() {
-  loading.value = true
-  try {
-    const res = await listCart()
-    items.value = res.data || []
-  } catch (e) {
-    alert('加载购物车失败：' + (e.message || '请稍后重试'))
-  } finally {
-    loading.value = false
-  }
-}
-
 async function toggleSelect(item) {
-  const next = !item.selected
-  item.selected = next
   try {
-    await updateCartSelected(item.id, next)
+    await cartStore.toggleSelected(item)
   } catch (e) {
-    item.selected = !next
-    alert(e.message || '操作失败')
+    apiError(e, '操作失败')
   }
 }
 
 async function toggleAll() {
-  const next = !allSelected.value
-  items.value.forEach(i => { i.selected = next })
   try {
-    await Promise.all(items.value.map(i => updateCartSelected(i.id, next)))
+    await cartStore.setAllSelected(!allSelected.value)
   } catch (e) {
-    loadCart()
-    alert(e.message || '操作失败')
+    apiError(e, '操作失败')
   }
 }
 
 async function changeQty(item, delta) {
   const next = item.quantity + delta
   if (next < 1 || next > item.stock) return
-  const old = item.quantity
-  item.quantity = next
   try {
-    await updateCartQuantity(item.id, next)
+    await cartStore.updateQuantity(item, next)
   } catch (e) {
-    item.quantity = old
-    alert(e.message || '修改数量失败')
+    apiError(e, '修改数量失败')
   }
 }
 
 async function handleRemove(item) {
   if (!confirm('确定要从购物车删除该商品吗？')) return
   try {
-    await removeCart(item.id)
-    items.value = items.value.filter(i => i.id !== item.id)
-    cartStore.refreshCount()
+    await cartStore.removeItem(item.id)
   } catch (e) {
-    alert('删除失败：' + (e.message || '请稍后重试'))
+    apiError(e, '删除失败')
   }
 }
 
@@ -152,7 +129,7 @@ function goCheckout() {
 }
 
 onMounted(() => {
-  loadCart()
+  cartStore.fetchItems().catch(e => apiError(e, '加载购物车失败'))
 })
 </script>
 

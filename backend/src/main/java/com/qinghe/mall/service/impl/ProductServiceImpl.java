@@ -1,5 +1,6 @@
 package com.qinghe.mall.service.impl;
 
+import com.qinghe.mall.exception.BusinessException;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import com.qinghe.mall.config.ProductCacheService;
@@ -143,7 +144,7 @@ public class ProductServiceImpl implements ProductService {
     public Product update(Product product) {
         ProductDO existing = productDAO.findById(product.getId());
         if (existing == null) {
-            throw new RuntimeException("商品不存在");
+            throw new BusinessException("商品不存在");
         }
         ProductDO productDO = new ProductDO();
         productDO.setId(product.getId());

@@ -66,7 +66,7 @@ CREATE TABLE `order` (
     `gmt_created` datetime NOT NULL COMMENT '创建时间',
     `gmt_modified` datetime NOT NULL COMMENT '修改时间',
     PRIMARY KEY (`id`),
-    KEY idx_order_number (`order_number`),
+    UNIQUE KEY uk_order_number (`order_number`) COMMENT 'P1-5：订单号唯一约束（防生成碰撞兜底）',
     KEY idx_user_id (`user_id`),
     KEY idx_merchant_id (`merchant_id`) COMMENT '商家订单索引',
     KEY idx_status_created (`status`, `gmt_created`) COMMENT 'P1-9：超时关单/报表/状态聚合'
@@ -308,6 +308,47 @@ CREATE TABLE IF NOT EXISTS `merchant` (
     UNIQUE KEY `uk_user_id` (`user_id`),
     KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='入驻商家表';
+
+-- ==================== 退货退款 + 物流跟踪（P2-18，结构与 v2.6 迁移一致） ====================
+CREATE TABLE IF NOT EXISTS `logistics` (
+    `id` varchar(64) NOT NULL COMMENT '主键ID',
+    `order_number` varchar(64) NOT NULL COMMENT '订单编号',
+    `company` varchar(64) NOT NULL COMMENT '承运商',
+    `tracking_number` varchar(64) NOT NULL COMMENT '运单号',
+    `status` varchar(32) NOT NULL COMMENT '物流状态 SHIPPED/IN_TRANSIT/DELIVERING/SIGNED',
+    `gmt_created` datetime NOT NULL COMMENT '创建时间',
+    `gmt_modified` datetime NOT NULL COMMENT '修改时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_order_number` (`order_number`),
+    KEY `idx_tracking_number` (`tracking_number`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='物流表';
+
+CREATE TABLE IF NOT EXISTS `logistics_trace` (
+    `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `order_number` varchar(64) NOT NULL COMMENT '订单编号',
+    `description` varchar(255) NOT NULL COMMENT '轨迹描述',
+    `trace_time` datetime NOT NULL COMMENT '轨迹时间',
+    `gmt_created` datetime NOT NULL COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_order_number` (`order_number`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='物流轨迹表';
+
+CREATE TABLE IF NOT EXISTS `refund_request` (
+    `id` varchar(64) NOT NULL COMMENT '主键ID',
+    `order_number` varchar(64) NOT NULL COMMENT '订单编号',
+    `user_id` bigint NOT NULL COMMENT '申请用户ID',
+    `type` varchar(32) NOT NULL COMMENT '申请类型 REFUND_ONLY=仅退款 / RETURN_REFUND=退货退款',
+    `reason` varchar(255) NOT NULL COMMENT '申请原因',
+    `status` varchar(32) NOT NULL COMMENT '审核状态 PENDING/APPROVED/REJECTED',
+    `previous_order_status` varchar(32) DEFAULT NULL COMMENT '申请前订单状态（驳回时回退用）',
+    `review_comment` varchar(255) DEFAULT NULL COMMENT '审核意见',
+    `gmt_created` datetime NOT NULL COMMENT '创建时间',
+    `gmt_modified` datetime NOT NULL COMMENT '修改时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_order_number` (`order_number`),
+    KEY `idx_user_id` (`user_id`),
+    KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款/退货申请表';
 
 -- ==================== 多品类种子商品（综合性超级商场：覆盖数码/个护/服饰/家居/食品/美妆） ====================
 -- 图复用内置 24 张占位图（p001~p008 各 3 张，SeedImageInitializer 启动时拷贝）；正式运营请替换为真实商品图

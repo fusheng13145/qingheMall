@@ -79,6 +79,16 @@
         WHERE order_number = #{orderNumber} AND status = #{expectedStatus}
     </update>
 
+    <!-- P2-18：多来源 CAS（退货退款申请可从多个状态发起） -->
+    <update id="updateStatusWithGuardIn">
+        UPDATE `order`
+        SET status = #{targetStatus}, gmt_modified = NOW()
+        WHERE order_number = #{orderNumber} AND status IN
+        <foreach collection="expectedStatuses" item="st" open="(" separator="," close=")">
+            #{st}
+        </foreach>
+    </update>
+
     <!-- 商家店铺订单（M6：归属过滤 + 可选状态） -->
     <select id="findByMerchantId" resultMap="BaseResultMap">
         SELECT <include refid="Base_Column_List"/>
@@ -134,6 +144,15 @@
         SELECT COALESCE(SUM(total_price), 0) FROM `order` WHERE status = #{status}
     </select>
 
+    <!-- P1-7：统一已付营收口径，多状态金额合计 -->
+    <select id="sumTotalPriceByStatuses" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(total_price), 0) FROM `order`
+        WHERE status IN
+        <foreach collection="statuses" item="st" open="(" separator="," close=")">
+            #{st}
+        </foreach>
+    </select>
+
     <delete id="deleteByOrderNumberForTest">
         DELETE FROM `order` WHERE order_number = #{orderNumber}
     </delete>
@@ -145,6 +164,21 @@
                COALESCE(SUM(total_price), 0) AS salesAmount
         FROM `order`
         WHERE status = #{status}
+          AND gmt_created &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        GROUP BY DATE(gmt_created)
+        ORDER BY day ASC
+    </select>
+
+    <!-- P1-7：统一已付营收口径，多状态销售日报 -->
+    <select id="dailySalesReportByStatuses" resultType="java.util.HashMap">
+        SELECT DATE(gmt_created) AS day,
+               COUNT(*) AS orderCount,
+               COALESCE(SUM(total_price), 0) AS salesAmount
+        FROM `order`
+        WHERE status IN
+        <foreach collection="statuses" item="st" open="(" separator="," close=")">
+            #{st}
+        </foreach>
           AND gmt_created &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
         GROUP BY DATE(gmt_created)
         ORDER BY day ASC

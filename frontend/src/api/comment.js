@@ -5,11 +5,11 @@ export function addComment(payload) {
   return request.post('/comment/add', payload)
 }
 
-// 商品评价列表（分页）：GET /api/comment/product?productId=&pagination=&pageSize=
+// 商品评价列表（分页）：GET /api/comment/product?productId=&pageNum=&pageSize=（P2-12 统一 pageNum）
 // 返回 Paging<Comment>：{ pageNum, pageSize, totalPage, totalCount, data }
-export function listProductComments(productId, pagination = 1, pageSize = 10) {
+export function listProductComments(productId, pageNum = 1, pageSize = 10) {
   return request.get('/comment/product', {
-    params: { productId, pagination, pageSize }
+    params: { productId, pageNum, pageSize }
   })
 }
 

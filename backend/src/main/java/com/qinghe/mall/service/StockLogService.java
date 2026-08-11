@@ -10,6 +10,8 @@ public interface StockLogService {
     String TYPE_ORDER_RESTORE = "ORDER_RESTORE";
     String TYPE_EXPIRE_RESTORE = "EXPIRE_RESTORE";
     String TYPE_STOCK_SET = "STOCK_SET";
+    /** P2-18：退货退款审核通过后的库存回补 */
+    String TYPE_REFUND_RESTORE = "REFUND_RESTORE";
 
     /**
      * 记录一条库存变动流水。
