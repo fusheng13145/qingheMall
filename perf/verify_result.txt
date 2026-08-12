@@ -1,0 +1,13 @@
+C:\Users\ASUS\Desktop\实战项目\青禾商城\qingheMall\perf\verify_stock.py:106: DeprecationWarning: 'db' is deprecated, use 'database'
+  raise SystemExit(main())
+C:\Users\ASUS\Desktop\实战项目\青禾商城\qingheMall\perf\verify_stock.py:106: DeprecationWarning: 'passwd' is deprecated, use 'password'
+  raise SystemExit(main())
+登录 OK，开始边界下单 (100 次, 3.0/s, SKU=pd045 初始库存=30)
+
+==================== 边界不超卖校验 (SKU=pd045) ====================
+请求总数=100  成功下单=30  业务失败=70  限流拦截=0
+耗时=34.2s  成功速率=0.88/s
+DB 剩余库存=0  订单表订单数=30  库存流水(ORDER_DEDUCT)=30
+----------------------------------------------------------------------
+✅ 不超卖验证通过：成功下单数==初始库存==订单数==流水数==30，剩余库存=0
+====================================================================
