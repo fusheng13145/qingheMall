@@ -102,6 +102,14 @@
             <version>8.15.0</version>
         </dependency>
 
+        <!-- 阶段二 C 日志聚合：后端直推 Loki（loki4j appender，#22）。异步批量推送，
+             不依赖 Promtail；Loki 不可用时异步丢弃不影响主流程。 -->
+        <dependency>
+            <groupId>com.github.loki4j</groupId>
+            <artifactId>loki-logback-appender</artifactId>
+            <version>2.0.0</version>
+        </dependency>
+
         <!-- Spring Session Redis：多实例 Session 共享（P3） -->
         <dependency>
             <groupId>org.springframework.session</groupId>

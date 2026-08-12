@@ -1,18 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  青禾商城 · 结构化 JSON 日志（阶段二 Loki 日志聚合前置）
+  青禾商城 · 结构化 JSON 日志（阶段二 Loki 日志聚合）
 
-  目标：在保留人类可读 CONSOLE 的同时，向 ./logs/qinghe.log 输出一行一事件的
-  JSON 日志（含 timestamp / level / logger / thread / traceId(mdc) / message /
-  stackTrace），供 Loki + Promtail 按标签采集与按 traceId 关联检索。
+  双通道：
+  - FILE-JSON：向 ./logs/qinghe.log 输出一行一事件的 Logstash JSON（本地调试/留底）。
+  - LOKI（loki4j 2.0 直推）：后端异步批量推送 JSON 日志至 Loki，无需 Promtail；
+    标签低基数(app/level)，traceId 入消息 JSON 便于 Grafana 关联检索。
 
   说明：
   - 由 Spring Boot 自动加载（优先级高于 application.properties 的 logging.*）。
   - <mdc/> 会透出 TraceIdFilter 注入的 traceId，实现全链路追踪与日志关联。
-  - 不引入额外运行时依赖风险：logstash-logback-encoder 已加入 pom 依赖。
+  - 运行时依赖：logstash-logback-encoder（文件 JSON）、loki4j（直推 Loki）已在 pom。
 -->
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- 阶段二 C：Loki 推送地址（默认本机；prod 经 compose 走容器名 loki） -->
+    <springProperty name="LOKI_URL" source="logging.loki.url" defaultValue="http://localhost:3100/loki/api/v1/push"/>
+    <springProperty name="LOKI_APP_NAME" source="spring.application.name" defaultValue="qinghe-mall"/>
 
     <property name="LOG_PATH" value="./logs"/>
     <property name="LOG_FILE" value="${LOG_PATH}/qinghe.log"/>
@@ -49,8 +54,38 @@
         </encoder>
     </appender>
 
+    <!-- 阶段二 C：直推 Loki（loki4j 2.0）。
+         - <labels>：换行分隔的低基数标签(app/level)供 Loki 分片与快速检索；app 取 spring.application.name。
+         - <message>：PatternLayout 输出一行 JSON（含 traceId），便于 Grafana 用 `| json` 解析关联。
+         - <batch>：缩短攒批超时(2s)与上限，便于开发与验收时日志快速入 Loki（默认 60s 过慢）。
+         - Loki 不可用时由外层 AsyncAppender 异步丢弃，绝不阻塞主流程。 -->
+    <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
+        <http>
+            <url>${LOKI_URL}</url>
+        </http>
+        <labels>
+            app = ${LOKI_APP_NAME}
+            level = %level
+        </labels>
+        <message>
+            <pattern>{"timestamp":"%d{ISO8601}","level":"%level","logger":"%logger","thread":"%thread","traceId":"%X{traceId:-}","message":"%msg"}</pattern>
+        </message>
+        <batch>
+            <maxItems>100</maxItems>
+            <timeoutMs>2000</timeoutMs>
+        </batch>
+    </appender>
+
+    <appender name="LOKI-ASYNC" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="LOKI"/>
+        <queueSize>1000</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <includeCallerData>false</includeCallerData>
+    </appender>
+
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE-JSON"/>
+        <appender-ref ref="LOKI-ASYNC"/>
     </root>
 </configuration>
