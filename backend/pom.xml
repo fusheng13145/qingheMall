@@ -86,6 +86,13 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
+        <!-- 结构化 JSON 日志（阶段二 Loki/ELK 日志聚合前置）：logback-spring.xml 使用 -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>7.4</version>
+        </dependency>
+
         <!-- Spring Session Redis：多实例 Session 共享（P3） -->
         <dependency>
             <groupId>org.springframework.session</groupId>

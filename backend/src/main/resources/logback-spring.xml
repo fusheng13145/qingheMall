@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  青禾商城 · 结构化 JSON 日志（阶段二 Loki 日志聚合前置）
+
+  目标：在保留人类可读 CONSOLE 的同时，向 ./logs/qinghe.log 输出一行一事件的
+  JSON 日志（含 timestamp / level / logger / thread / traceId(mdc) / message /
+  stackTrace），供 Loki + Promtail 按标签采集与按 traceId 关联检索。
+
+  说明：
+  - 由 Spring Boot 自动加载（优先级高于 application.properties 的 logging.*）。
+  - <mdc/> 会透出 TraceIdFilter 注入的 traceId，实现全链路追踪与日志关联。
+  - 不引入额外运行时依赖风险：logstash-logback-encoder 已加入 pom 依赖。
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <property name="LOG_PATH" value="./logs"/>
+    <property name="LOG_FILE" value="${LOG_PATH}/qinghe.log"/>
+
+    <!-- 人类可读控制台（与既有 traceId 风格保持一致） -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{traceId:-}] [%thread] %logger{36} - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 结构化 JSON 文件（Loki / ELK 采集目标） -->
+    <appender name="FILE-JSON" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/qinghe.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>7</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp>
+                    <timeZone>UTC+8</timeZone>
+                </timestamp>
+                <level/>
+                <loggerName/>
+                <threadName/>
+                <mdc/>
+                <message/>
+                <stackTrace/>
+            </providers>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE-JSON"/>
+    </root>
+</configuration>

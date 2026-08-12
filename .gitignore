@@ -45,3 +45,7 @@ Thumbs.db
 
 # ============ 临时调试/构建残留（禁止提交） ============
 backend/_trash/
+
+# ============ 压测产物（不入库，仅 locustfile.py + REPORT.md 入仓） ============
+perf/r_*.csv
+perf/r_*.html
