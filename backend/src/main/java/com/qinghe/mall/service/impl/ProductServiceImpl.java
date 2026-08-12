@@ -4,6 +4,7 @@ import com.qinghe.mall.exception.BusinessException;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import com.qinghe.mall.config.ProductCacheService;
+import com.qinghe.mall.config.elasticsearch.ProductIndexService;
 import com.qinghe.mall.dao.ProductDAO;
 import com.qinghe.mall.dataobject.ProductDO;
 import com.qinghe.mall.model.Paging;
@@ -18,6 +19,8 @@ import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -32,48 +35,54 @@ public class ProductServiceImpl implements ProductService {
     @Autowired
     private ProductCacheService productCacheService;
 
+    @Autowired
+    private ProductIndexService productIndexService;
+
+    private static final Logger log = LoggerFactory.getLogger(ProductServiceImpl.class);
+
     @Override
     public Paging<Product> queryPage(Integer pagination, Integer pageSize, String keyword, String brand, String sort) {
-        Page<ProductDO> page = PageHelper.startPage(pagination, pageSize)
-                .doSelectPage(() -> productDAO.queryAll(keyword, brand, sort, null));
-
-        Paging<Product> paging = new Paging<>();
-        paging.setPageNum(pagination);
-        paging.setPageSize(pageSize);
-        paging.setTotalPage(page.getPages());
-        paging.setTotalCount(page.getTotal());
-
-        List<Product> products = new ArrayList<>();
-        for (ProductDO productDO : page.getResult()) {
-            products.add(productDO.convertToModel());
+        try {
+            return productIndexService.search(keyword, brand, null, null, sort, pagination, pageSize);
+        } catch (Exception e) {
+            log.warn("[ES] 商品分页搜索降级 MySQL: {}", e.getMessage());
+            return queryPageMysql(pagination, pageSize, keyword, brand, sort, null);
         }
-        paging.setData(products);
-        return paging;
     }
 
     @Override
     public Paging<Product> queryOnSalePage(Integer pagination, Integer pageSize, String keyword, String brand, String sort) {
-        Page<ProductDO> page = PageHelper.startPage(pagination, pageSize)
-                .doSelectPage(() -> productDAO.queryAll(keyword, brand, sort, "ON"));
-
-        Paging<Product> paging = new Paging<>();
-        paging.setPageNum(pagination);
-        paging.setPageSize(pageSize);
-        paging.setTotalPage(page.getPages());
-        paging.setTotalCount(page.getTotal());
-
-        List<Product> products = new ArrayList<>();
-        for (ProductDO productDO : page.getResult()) {
-            products.add(productDO.convertToModel());
+        try {
+            return productIndexService.search(keyword, brand, "ON", null, sort, pagination, pageSize);
+        } catch (Exception e) {
+            log.warn("[ES] 在售商品搜索降级 MySQL: {}", e.getMessage());
+            return queryPageMysql(pagination, pageSize, keyword, brand, sort, "ON");
         }
-        paging.setData(products);
-        return paging;
     }
 
     @Override
     public Paging<Product> queryMerchantPage(Long merchantId, String keyword, String status, int pageNum, int pageSize) {
+        try {
+            return productIndexService.search(keyword, null, status, merchantId, null, pageNum, pageSize);
+        } catch (Exception e) {
+            log.warn("[ES] 商家商品搜索降级 MySQL: {}", e.getMessage());
+            return queryMerchantPageMysql(merchantId, keyword, status, pageNum, pageSize);
+        }
+    }
+
+    private Paging<Product> queryPageMysql(Integer pagination, Integer pageSize, String keyword, String brand, String sort, String status) {
+        Page<ProductDO> page = PageHelper.startPage(pagination, pageSize)
+                .doSelectPage(() -> productDAO.queryAll(keyword, brand, sort, status));
+        return toPaging(page, pagination, pageSize);
+    }
+
+    private Paging<Product> queryMerchantPageMysql(Long merchantId, String keyword, String status, int pageNum, int pageSize) {
         Page<ProductDO> page = PageHelper.startPage(pageNum, pageSize)
                 .doSelectPage(() -> productDAO.queryByMerchantId(merchantId, keyword, status));
+        return toPaging(page, pageNum, pageSize);
+    }
+
+    private Paging<Product> toPaging(Page<ProductDO> page, int pageNum, int pageSize) {
         Paging<Product> paging = new Paging<>();
         paging.setPageNum(pageNum);
         paging.setPageSize(pageSize);
@@ -137,7 +146,9 @@ public class ProductServiceImpl implements ProductService {
         productDO.setGmtModified(new Date());
         productDAO.insert(productDO);
         productCacheService.evict(productDO.getId());
-        return productDO.convertToModel();
+        Product created = productDO.convertToModel();
+        productIndexService.index(created);
+        return created;
     }
 
     @Override
@@ -159,6 +170,7 @@ public class ProductServiceImpl implements ProductService {
         productDO.setGmtModified(new Date());
         productDAO.update(productDO);
         productCacheService.evict(product.getId());
+        productIndexService.index(product);
         return productDAO.findById(product.getId()).convertToModel();
     }
 
@@ -185,6 +197,7 @@ public class ProductServiceImpl implements ProductService {
         boolean deleted = productDAO.deleteById(id) > 0;
         if (deleted) {
             productCacheService.evict(id);
+            productIndexService.delete(id);
         }
         return deleted;
     }

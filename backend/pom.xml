@@ -93,6 +93,15 @@
             <version>7.4</version>
         </dependency>
 
+        <!-- Elasticsearch 8.15 官方 Java API Client：全文检索（阶段二 B-②）。
+             版本与 docker-compose 中 elasticsearch:8.15.0 对齐；底层 elasticsearch-rest-client
+             为其传递依赖。Jackson 由 spring-boot-dependencies 管理，无需显式声明。 -->
+        <dependency>
+            <groupId>co.elastic.clients</groupId>
+            <artifactId>elasticsearch-java</artifactId>
+            <version>8.15.0</version>
+        </dependency>
+
         <!-- Spring Session Redis：多实例 Session 共享（P3） -->
         <dependency>
             <groupId>org.springframework.session</groupId>

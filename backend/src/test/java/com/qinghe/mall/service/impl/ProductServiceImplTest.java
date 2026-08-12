@@ -42,14 +42,23 @@ class ProductServiceImplTest {
     private ProductCacheService cacheService;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         service = new ProductServiceImpl();
         productDAO = org.mockito.Mockito.mock(ProductDAO.class);
         productDetailService = org.mockito.Mockito.mock(ProductDetailService.class);
         cacheService = org.mockito.Mockito.mock(ProductCacheService.class);
+        com.qinghe.mall.config.elasticsearch.ProductIndexService indexService =
+                org.mockito.Mockito.mock(com.qinghe.mall.config.elasticsearch.ProductIndexService.class);
         ReflectionTestUtils.setField(service, "productDAO", productDAO);
         ReflectionTestUtils.setField(service, "productDetailService", productDetailService);
         ReflectionTestUtils.setField(service, "productCacheService", cacheService);
+        ReflectionTestUtils.setField(service, "productIndexService", indexService);
+        // 默认 ES 搜索不可用 → 既有查询用例走 MySQL 降级，保持原断言不变
+        org.mockito.Mockito.doThrow(new RuntimeException("ES unavailable")).when(indexService).search(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.anyInt());
     }
 
     @AfterEach

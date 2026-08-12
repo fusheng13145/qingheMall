@@ -66,6 +66,8 @@ services:
       REDIS_PORT: "6379"
       # P1-4：与 redis requirepass 同源，保证认证一致
       REDIS_PASSWORD: ${REDIS_PASSWORD:-QhMallDev2026!}
+      # 阶段二 B-②：Elasticsearch 搜索（容器名 elasticsearch，仅 compose 内网可达）
+      ELASTICSEARCH_HOSTS: ${ELASTICSEARCH_HOSTS:-http://elasticsearch:9200}
       UPLOAD_DIR: /app/upload
       # 会话 Cookie Secure 标记：默认 HTTP 部署需 false 才能下发 Cookie；启用 HTTPS 时置 true
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
