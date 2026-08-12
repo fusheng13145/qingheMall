@@ -3,6 +3,7 @@ package com.qinghe.mall.config;
 import com.alibaba.fastjson2.JSON;
 import com.qinghe.mall.model.Product;
 import com.qinghe.mall.model.ProductDetail;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,6 +46,10 @@ class ProductCacheServiceTest {
         service = new ProductCacheService();
         // 注入 mock 的 redissonClient 字段
         org.springframework.test.util.ReflectionTestUtils.setField(service, "redissonClient", redissonClient);
+        // 注入真实 MeterRegistry 并手动触发 @PostConstruct 的指标注册（单元测试不走 Spring 容器）
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "meterRegistry", registry);
+        service.init();
     }
 
     @Test
@@ -130,5 +135,38 @@ class ProductCacheServiceTest {
     void evict_redisException_swallowed() {
         doThrow(new RuntimeException("boom")).when(mapCache).fastRemove(any());
         service.evict("p1");
+    }
+
+    @Test
+    void metrics_hitAndMissCounted() {
+        // 独立 registry，避免与 setUp 的 registry 串扰
+        SimpleMeterRegistry reg = new SimpleMeterRegistry();
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "meterRegistry", reg);
+        service.init();
+
+        // 两次未命中：getProduct miss + getDetails miss
+        when(mapCache.get(any())).thenReturn(null);
+        service.getProduct("p1");
+        service.getDetails("p1");
+
+        // 一次命中：product 回填后再次读取
+        Product p = new Product();
+        p.setId("p1");
+        when(mapCache.get(eq("product:p1"))).thenReturn(JSON.toJSONString(p));
+        service.getProduct("p1");
+
+        // 命中/未命中本地计数
+        assertEquals(1L, service.getHits());
+        assertEquals(2L, service.getMisses());
+
+        // Prometheus 计数器（经 MeterRegistry 暴露）
+        double hitsMetric = reg.find("qinghe.product.cache.hits").counter().count();
+        double missesMetric = reg.find("qinghe.product.cache.misses").counter().count();
+        assertEquals(1.0, hitsMetric, 0.0001);
+        assertEquals(2.0, missesMetric, 0.0001);
+
+        // 命中率 Gauge ≈ 1/3
+        double ratio = reg.find("qinghe.product.cache.hitratio").gauge().value();
+        assertEquals(1.0 / 3.0, ratio, 0.0001);
     }
 }
