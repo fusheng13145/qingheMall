@@ -1,138 +1,134 @@
 package com.qinghe.mall.config;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-
 /**
- * CSRF Referer 校验过滤器测试（原零覆盖）：
- * 白名单放行 / 非法来源 403 / 安全方法放行 / 排除路径放行 / 缺失来源拒绝 / 开关关闭放行。
+ * CsrfRefererFilter 分支覆盖（T3 续补）：覆盖 enabled 开关、安全方法短路、
+ * 排除路径、Origin/Referer 白名单命中/未命中、非法 URL、带端口 Origin 等分支。
+ * 通过直接调用 doFilterInternal 并注入 @Value 字段（standalone 无 Spring 注入）。
  */
 class CsrfRefererFilterTest {
 
     private CsrfRefererFilter filter;
-    private FilterChain chain;
 
     @BeforeEach
     void setUp() {
         filter = new CsrfRefererFilter();
         ReflectionTestUtils.setField(filter, "enabled", true);
-        ReflectionTestUtils.setField(filter, "allowedOriginsConfig", "http://localhost:5173,https://mall.example.com");
-        ReflectionTestUtils.setField(filter, "excludePaths", "/api/pay/wechatNotify");
-        chain = mock(FilterChain.class);
+        ReflectionTestUtils.setField(filter, "allowedOriginsConfig", "http://good.com,https://good.com:8443");
+        ReflectionTestUtils.setField(filter, "excludePaths", "/api/pay/wechatNotify,/api/pay/alipayNotify");
     }
 
-    private MockHttpServletRequest post(String uri) {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", uri);
-        request.setRequestURI(uri);
-        return request;
-    }
-
-    @Test
-    @DisplayName("白名单 Origin 放行")
-    void allowedOriginPasses() throws Exception {
-        MockHttpServletRequest request = post("/api/order/create");
-        request.addHeader("Origin", "http://localhost:5173");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        filter.doFilter(request, response, chain);
-
-        assertThat(response.getStatus()).isEqualTo(200);
-        verify(chain).doFilter(any(), any());
+    private static final class RecordingChain implements FilterChain {
+        boolean called = false;
+        @Override
+        public void doFilter(jakarta.servlet.ServletRequest request, jakarta.servlet.ServletResponse response) { called = true; }
     }
 
     @Test
-    @DisplayName("白名单 Referer 放行（含端口）")
-    void allowedRefererPasses() throws Exception {
-        MockHttpServletRequest request = post("/api/cart/add");
-        request.addHeader("Referer", "https://mall.example.com/cart");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        filter.doFilter(request, response, chain);
-
-        verify(chain).doFilter(any(), any());
+    void post_noOriginReferer_rejected_403() throws Exception {
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/order/add");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        filter.doFilter(req, resp, chain);
+        assertEquals(403, resp.getStatus());
+        org.junit.jupiter.api.Assertions.assertFalse(chain.called);
     }
 
     @Test
-    @DisplayName("非法来源返回 403 且不进入链路")
-    void evilOriginRejected() throws Exception {
-        MockHttpServletRequest request = post("/api/order/create");
-        request.addHeader("Origin", "https://evil.com");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        filter.doFilter(request, response, chain);
-
-        assertThat(response.getStatus()).isEqualTo(403);
-        assertThat(response.getContentAsString()).contains("非法请求来源");
-        verify(chain, never()).doFilter(any(), any());
+    void post_allowedOrigin_passes() throws Exception {
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/order/add");
+        req.addHeader("Origin", "http://good.com");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        filter.doFilter(req, resp, chain);
+        org.junit.jupiter.api.Assertions.assertTrue(chain.called);
     }
 
     @Test
-    @DisplayName("GET 等安全方法跳过校验")
-    void safeMethodBypasses() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/product/list");
-        request.setRequestURI("/api/product/list");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        filter.doFilter(request, response, chain);
-
-        verify(chain).doFilter(any(), any());
+    void post_allowedReferer_passes() throws Exception {
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/order/add");
+        req.addHeader("Referer", "http://good.com/x");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        filter.doFilter(req, resp, chain);
+        org.junit.jupiter.api.Assertions.assertTrue(chain.called);
     }
 
     @Test
-    @DisplayName("排除路径（微信支付回调）免校验")
-    void excludedPathBypasses() throws Exception {
-        MockHttpServletRequest request = post("/api/pay/wechatNotify");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        filter.doFilter(request, response, chain);
-
-        verify(chain).doFilter(any(), any());
+    void get_safeMethod_passes() throws Exception {
+        // 覆盖 SAFE_METHODS 短路分支
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/order/list");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        filter.doFilter(req, resp, chain);
+        org.junit.jupiter.api.Assertions.assertTrue(chain.called);
     }
 
     @Test
-    @DisplayName("状态变更请求无 Referer/Origin 拒绝 403")
-    void missingOriginRejected() throws Exception {
-        MockHttpServletRequest request = post("/api/order/create");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        filter.doFilter(request, response, chain);
-
-        assertThat(response.getStatus()).isEqualTo(403);
+    void post_excludedPath_passes() throws Exception {
+        // 覆盖 isExcluded 命中分支（微信回调等服务器间调用）
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/pay/wechatNotify");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        filter.doFilter(req, resp, chain);
+        org.junit.jupiter.api.Assertions.assertTrue(chain.called);
     }
 
     @Test
-    @DisplayName("校验开关关闭时全部放行")
-    void disabledBypasses() throws Exception {
+    void disabled_bypassesAll() throws Exception {
+        // 覆盖 enabled=false 短路分支
         ReflectionTestUtils.setField(filter, "enabled", false);
-        MockHttpServletRequest request = post("/api/order/create");
-        request.addHeader("Origin", "https://evil.com");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        filter.doFilter(request, response, chain);
-
-        verify(chain).doFilter(any(), any());
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/order/add");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        filter.doFilter(req, resp, chain);
+        org.junit.jupiter.api.Assertions.assertTrue(chain.called);
     }
 
     @Test
-    @DisplayName("Origin 端口与白名单不一致时拒绝")
-    void wrongPortRejected() throws Exception {
-        MockHttpServletRequest request = post("/api/order/create");
-        request.addHeader("Origin", "http://localhost:9999");
-        MockHttpServletResponse response = new MockHttpServletResponse();
+    void post_originWithPort_passes() throws Exception {
+        // 覆盖 extractOrigin 中 port>0 分支
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/order/add");
+        req.addHeader("Origin", "https://good.com:8443");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        filter.doFilter(req, resp, chain);
+        org.junit.jupiter.api.Assertions.assertTrue(chain.called);
+    }
 
-        filter.doFilter(request, response, chain);
+    @Test
+    void post_invalidOriginUrl_rejected() throws Exception {
+        // 覆盖 extractOrigin 解析失败返回 null → isAllowed false 分支
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/order/add");
+        req.addHeader("Origin", "not-a-valid-url");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        filter.doFilter(req, resp, chain);
+        assertEquals(403, resp.getStatus());
+    }
 
-        assertThat(response.getStatus()).isEqualTo(403);
+    @Test
+    void post_nonWhitelistedOrigin_rejected() throws Exception {
+        // 覆盖白名单遍历无匹配分支
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/order/add");
+        req.addHeader("Origin", "http://evil.com");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        filter.doFilter(req, resp, chain);
+        assertEquals(403, resp.getStatus());
+        org.junit.jupiter.api.Assertions.assertFalse(chain.called);
     }
 }

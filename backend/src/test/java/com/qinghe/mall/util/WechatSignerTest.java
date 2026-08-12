@@ -19,7 +19,7 @@ import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
 
 /**
- * 微信支付 v3 签名/验签/加解密 单元测试（体检报告 §4 P0 清单补测）。
+ * 微信支付 v3 签名/验签/加解密 单元测试（资金安全链路补测，对应原评估 P0 清单）。
  *
  * 覆盖：RSA 签名验签往返、篡改检测、AES-256-GCM 解密（含 AAD）、密钥加载错误路径。
  */

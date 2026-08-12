@@ -32,7 +32,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * 支付宝客户端 单元测试（体检报告 §4 P0 清单补测）。
+ * 支付宝客户端 单元测试（资金安全链路补测，对应原评估 P0 清单）。
  *
  * 核心：异步通知 RSA2 验签（verifyNotify）——真实密钥对往返 + 篡改/缺参拒绝；
  * 业务路径：precreate 成功/业务失败/缺业务体、queryTradeStatus 成功/降级、

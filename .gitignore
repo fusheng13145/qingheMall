@@ -42,3 +42,6 @@ dist/
 .DS_Store
 Thumbs.db
 *.local
+
+# ============ 临时调试/构建残留（禁止提交） ============
+backend/_trash/

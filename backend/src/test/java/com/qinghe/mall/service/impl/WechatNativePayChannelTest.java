@@ -36,7 +36,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * 微信 Native 支付通道单元测试（体检报告 §3.3 P0 资金链路补测：原 3% 覆盖）。
+ * 微信 Native 支付通道单元测试（资金链路补测，对应原评估 P0 清单；原覆盖率 3%）。
  *
  * 覆盖：渠道启用判定、createPay 成功/未配置、queryTradeState 成功/失败降级、
  * parseNotify 完整验签解密链路（真实 RSA 密钥对 + AES-256-GCM）+ 全失败路径

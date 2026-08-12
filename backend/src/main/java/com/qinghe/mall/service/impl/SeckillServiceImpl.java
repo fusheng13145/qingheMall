@@ -319,7 +319,15 @@ public class SeckillServiceImpl implements SeckillService {
             throw new BusinessException("抢购被中断", e);
         } finally {
             if (locked && userLock.isHeldByCurrentThread()) {
-                userLock.unlock();
+                try {
+                    userLock.unlock();
+                } catch (IllegalMonitorStateException e) {
+                    // 并发场景：事务在单行热点库存上排队导致耗时超过锁租约（leaseTime=5s），
+                    // Redisson 已在 Redis 侧自动释放该锁，而线程本地仍标记持锁，unlock 会抛此异常。
+                    // 此时下单事务已提交、订单已生成，仅忽略解锁异常，避免 finally 抛错覆盖
+                    // 已成功的 return，否则前端将收到 500 误判（下单成功却被当作失败）。
+                    log.debug("秒杀用户锁租约已过期自动释放，忽略解锁异常 activityId={}, userId={}", activityId, userId);
+                }
             }
         }
     }
