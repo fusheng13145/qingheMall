@@ -37,7 +37,7 @@
              强制，导致分支覆盖长期贴 80% 下限（2026-08-13 实测 80.20%）。
              先锁 0.80 防回归；达标后抬至 0.85（#37 目标）。总分支 1687，
              需新增覆盖约 81 个缺失分支（334→253）。 -->
-        <jacoco.branch.min>0.80</jacoco.branch.min>
+        <jacoco.branch.min>0.85</jacoco.branch.min>
     </properties>
 
     <dependencies>
