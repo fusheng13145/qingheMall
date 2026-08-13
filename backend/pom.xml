@@ -33,6 +33,11 @@
              达成覆盖率 ≥85% 放行条件）；⚠️ 余量仅 ~0.2pp，
              未来新增代码须同步补测试，否则 CI 立即失败。 -->
         <jacoco.line.min>0.85</jacoco.line.min>
+        <!-- JaCoCo 分支覆盖率门禁下限（#37 新增）。历史仅行覆盖有门禁、分支从未
+             强制，导致分支覆盖长期贴 80% 下限（2026-08-13 实测 80.20%）。
+             先锁 0.80 防回归；达标后抬至 0.85（#37 目标）。总分支 1687，
+             需新增覆盖约 81 个缺失分支（334→253）。 -->
+        <jacoco.branch.min>0.80</jacoco.branch.min>
     </properties>
 
     <dependencies>
@@ -239,6 +244,11 @@
                                             <counter>LINE</counter>
                                             <value>COVEREDRATIO</value>
                                             <minimum>${jacoco.line.min}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.branch.min}</minimum>
                                         </limit>
                                     </limits>
                                 </rule>
