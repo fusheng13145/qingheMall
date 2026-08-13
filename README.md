@@ -51,11 +51,11 @@ qingheMall
 │   ├── sql/migration/             # 存量库增量迁移脚本 v1.1~v2.7（幂等，17 个）
 │   ├── src/main/java/com/qinghe/mall/   # controller / service / dao / model / config / util
 │   ├── src/main/resources/        # application*.properties + MyBatis XML + seed-images
-│   └── src/test/java/             # 单元测试（565 用例，JaCoCo 行覆盖 89%+ 门禁）
+│   └── src/test/java/             # 单元测试（后端 944 + 前端 478 用例，JaCoCo 行/分支双 ≥85% 门禁）
 ├── frontend/                      # 前端应用（Vue 3 / Vite）
 │   ├── src/api/                   # 接口封装（14 个模块）
 │   ├── src/components/ stores/ styles/ utils/ router/   # 组件（含 common/ConsoleSidebar、LogisticsTimeline）/ Pinia / 三端皮肤令牌 / 工具 / 路由
-│   ├── src/views/                 # 页面（前台 + admin/ + merchant/），测试 478 用例
+│   ├── src/views/                 # 页面 28 个 .vue（前台 + admin/ + merchant/）；另含 components/ 6 个公共组件 + App.vue，前端共 35 个 .vue 文件，前端测试 478 用例
 │   ├── vite.config.js  nginx.conf  nginx-ssl.conf  Dockerfile
 │   └── package-lock.json          # 依赖锁定
 ├── deploy/                        # Prometheus / Alertmanager / Grafana 监控告警配置
@@ -67,7 +67,7 @@ qingheMall
 
 ## 文档
 
-> 📖 **唯一文档源：[青禾商城手册.md](青禾商城手册.md)**（v5.7）—— 涵盖项目总览、目录说明、环境配置、快速开始、数据模型、API 大全、核心设计、支付接入、部署运维与上线流程、测试验收、版本路线图、已知问题与 FAQ。**后续文档变更一律并入手册，不再另开独立文档。**
+> 📖 **唯一文档源：[青禾商城手册.md](青禾商城手册.md)**（v6.7）—— 涵盖项目总览、目录说明、环境配置、快速开始、数据模型、API 大全、核心设计、支付接入、部署运维与上线流程、测试验收、版本路线图、已知问题与 FAQ。**后续文档变更一律并入手册，不再另开独立文档。**
 
 ## 已知限制
 

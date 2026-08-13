@@ -46,6 +46,10 @@ Thumbs.db
 # ============ 临时调试/构建残留（禁止提交） ============
 backend/_trash/
 
-# ============ 压测产物（不入库，仅 locustfile.py + REPORT.md 入仓） ============
+# ============ 压测产物（不入库，仅 locustfile*.py + 报告 md/txt 入仓） ============
+# 读链路产物
 perf/r_*.csv
 perf/r_*.html
+# 写链路产物（#23/#36 验收，同样为可重生输出，禁止入库）
+perf/w_*.csv
+perf/w_*.html

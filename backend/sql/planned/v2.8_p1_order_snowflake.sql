@@ -1,6 +1,16 @@
 -- ============================================================
 -- 青禾商城：订单 order.id  UUID → BIGINT 雪花 ID 迁移脚本
 -- ============================================================
+-- 【状态】PLANNED / 规划中，尚未执行（NOT APPLIED）
+--   当前 index.sql 中 order.id 仍为 varchar(64)，应用侧 Order.id 尚未改造为
+--   Long（SnowflakeIdGenerator 属重评报告第十一章 T5 清单，待落地）。
+--   ⚠️ 禁止在应用侧 T5 改造完成 + 停机窗口就绪前执行本脚本，否则应用写入的
+--   varchar(64) 订单号将与 BIGINT 主键类型冲突，导致下单全面失败。
+--   本脚本存放于 sql/planned/（非 sql/migration/），不会被存量库升级流程自动执行。
+-- 【执行条件】① 应用侧 T5 落地（Order.id: String→Long + SnowflakeIdGenerator）
+--            ② 停机维护窗口 + staging 全量回放演练通过
+--            ③ 先对 qinghedb 做物理备份（mysqldump）
+-- ============================================================
 -- 影响面：仅 order 表自身。所有关联表（qinghe_payment_record / comment /
 --        stock_log / logistics / logistics_trace / refund_request /
 --        seckill_order）均经 order_number 关联，不引用 order.id，故迁移
