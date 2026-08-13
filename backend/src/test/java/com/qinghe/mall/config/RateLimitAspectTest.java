@@ -6,9 +6,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.qinghe.mall.exception.RateLimitException;
+import org.mockito.ArgumentCaptor;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import java.lang.reflect.Method;
@@ -47,6 +49,14 @@ class RateLimitAspectTest {
         }
     }
 
+    /** 带前缀 + {userId}（按接口 + 登录用户维度限流，前缀应被保留） */
+    static class DemoPrefixedService {
+        @RateLimit(key = "order.add.{userId}", rate = 2, message = "too fast")
+        public String hello() {
+            return "ok";
+        }
+    }
+
     @Mock
     private RedissonClient redissonClient;
 
@@ -80,6 +90,11 @@ class RateLimitAspectTest {
 
     private RateLimit userAnnotation() throws Exception {
         Method method = DemoUserService.class.getMethod("hello");
+        return method.getAnnotation(RateLimit.class);
+    }
+
+    private RateLimit prefixedAnnotation() throws Exception {
+        Method method = DemoPrefixedService.class.getMethod("hello");
         return method.getAnnotation(RateLimit.class);
     }
 
@@ -146,11 +161,39 @@ class RateLimitAspectTest {
         RequestContextHolder.resetRequestAttributes();
     }
 
+    @Test
+    void userKey_withPrefix_resolvesPrefixedUserDimension_andCapturesKey() throws Throwable {
+        stubPrefixedKey();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpSession sess = mock(HttpSession.class);
+        when(req.getSession()).thenReturn(sess);
+        when(sess.getAttribute("userId")).thenReturn("42");
+        ServletRequestAttributes attrs = mock(ServletRequestAttributes.class);
+        when(attrs.getRequest()).thenReturn(req);
+        RequestContextHolder.setRequestAttributes(attrs);
+
+        Object r = aspect.around(joinPoint, prefixedAnnotation());
+        assertEquals("ok", r);
+
+        ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+        verify(redissonClient).getRateLimiter(captor.capture());
+        assertEquals("ratelimit:order.add.user:42", captor.getValue());
+        RequestContextHolder.resetRequestAttributes();
+    }
+
     private void stubUserKey() throws Throwable {
         when(limiter.trySetRate(any(), anyLong(), anyLong(), any())).thenReturn(false);
         when(limiter.tryAcquire()).thenReturn(true);
         when(joinPoint.proceed()).thenReturn("ok");
         when(signature.getDeclaringType()).thenReturn(DemoUserService.class);
         when(signature.getMethod()).thenReturn(DemoUserService.class.getMethod("hello"));
+    }
+
+    private void stubPrefixedKey() throws Throwable {
+        when(limiter.trySetRate(any(), anyLong(), anyLong(), any())).thenReturn(false);
+        when(limiter.tryAcquire()).thenReturn(true);
+        when(joinPoint.proceed()).thenReturn("ok");
+        when(signature.getDeclaringType()).thenReturn(DemoPrefixedService.class);
+        when(signature.getMethod()).thenReturn(DemoPrefixedService.class.getMethod("hello"));
     }
 }

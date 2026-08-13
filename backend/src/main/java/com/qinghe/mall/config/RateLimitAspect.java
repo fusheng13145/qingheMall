@@ -56,16 +56,16 @@ public class RateLimitAspect {
 
     /**
      * 解析限流维度 key：
-     * 注解指定 {userId} 时按登录用户维度，否则按接口全局限流（类名.方法名）。
+     * 注解 key 含 {userId} 时按登录用户维度（支持前缀，如 "order.add.{userId}" → "order.add.user:42"），
+     * 未登录（无 userId）回退到接口全局限流（类名.方法名），避免所有匿名请求共享同一 user:null 桶；
+     * 注解 key 不含 {userId} 时按接口全局限流（类名.方法名）。
      */
     private String resolveKey(ProceedingJoinPoint joinPoint, RateLimit rateLimit) {
         if (rateLimit.key() != null && rateLimit.key().contains("{userId}")) {
             HttpServletRequest request = currentRequest();
-            if (request != null) {
-                Object userId = request.getSession().getAttribute("userId");
-                if (userId != null) {
-                    return "user:" + userId;
-                }
+            Object userId = request == null ? null : request.getSession().getAttribute("userId");
+            if (userId != null) {
+                return rateLimit.key().replace("{userId}", "user:" + userId);
             }
         }
         MethodSignature signature = (MethodSignature) joinPoint.getSignature();
