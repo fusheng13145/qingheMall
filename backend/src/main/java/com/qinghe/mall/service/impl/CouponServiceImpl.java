@@ -32,8 +32,8 @@ public class CouponServiceImpl implements CouponService {
 
     // ===================== 管理端 =====================
 
-    @Override
-    public CouponDO createCoupon(CouponDO coupon) {
+    /** 平台/商家券通用校验（#39：提取复用，确保两类券规则一致） */
+    private void validateCoupon(CouponDO coupon) {
         if (coupon == null || StringUtils.isBlank(coupon.getName())) {
             throw new BusinessException("券名称不能为空");
         }
@@ -58,6 +58,11 @@ public class CouponServiceImpl implements CouponService {
         if (StringUtils.isBlank(coupon.getStatus())) {
             coupon.setStatus("ACTIVE");
         }
+    }
+
+    @Override
+    public CouponDO createCoupon(CouponDO coupon) {
+        validateCoupon(coupon);
         coupon.setId(UUIDUtils.uuid());
         coupon.setGmtCreated(new Date());
         coupon.setGmtModified(new Date());
@@ -107,6 +112,77 @@ public class CouponServiceImpl implements CouponService {
             throw new BusinessException("状态不合法（应为 ACTIVE 或 INACTIVE）");
         }
         couponDAO.updateStatus(couponId, status);
+    }
+
+    // ===================== 商家端（#39） =====================
+
+    @Override
+    public CouponDO createMerchantCoupon(Long merchantId, CouponDO coupon) {
+        if (merchantId == null) {
+            throw new BusinessException("商家身份缺失");
+        }
+        validateCoupon(coupon);
+        coupon.setId(UUIDUtils.uuid());
+        coupon.setMerchantId(merchantId);
+        coupon.setGmtCreated(new Date());
+        coupon.setGmtModified(new Date());
+        couponDAO.insert(coupon);
+        return coupon;
+    }
+
+    @Override
+    public Paging<CouponDO> listMerchantCoupons(Long merchantId, int pageNum, int pageSize) {
+        if (pageNum < 1) {
+            pageNum = 1;
+        }
+        if (pageSize < 1 || pageSize > 50) {
+            pageSize = 10;
+        }
+        Page<CouponDO> page = PageHelper.startPage(pageNum, pageSize)
+                .doSelectPage(() -> couponDAO.findByMerchant(merchantId));
+        Paging<CouponDO> paging = new Paging<>();
+        paging.setPageNum(pageNum);
+        paging.setPageSize(pageSize);
+        paging.setTotalPage(page.getPages());
+        paging.setTotalCount(page.getTotal());
+        paging.setData(page.getResult());
+        return paging;
+    }
+
+    @Override
+    public CouponDO updateMerchantCoupon(Long merchantId, CouponDO coupon) {
+        CouponDO existing = couponDAO.findById(coupon.getId());
+        if (existing == null) {
+            throw new BusinessException("券不存在");
+        }
+        if (!merchantId.equals(existing.getMerchantId())) {
+            throw new BusinessException("无权操作其他店铺的营销活动");
+        }
+        if ("ACTIVE".equals(existing.getStatus())) {
+            throw new BusinessException("上架中的券不可修改，请先下架");
+        }
+        couponDAO.update(coupon);
+        return couponDAO.findById(coupon.getId());
+    }
+
+    @Override
+    public void toggleMerchantCoupon(Long merchantId, String couponId, String status) {
+        if (!"ACTIVE".equals(status) && !"INACTIVE".equals(status)) {
+            throw new BusinessException("状态不合法（应为 ACTIVE 或 INACTIVE）");
+        }
+        CouponDO existing = couponDAO.findById(couponId);
+        if (existing == null) {
+            throw new BusinessException("券不存在");
+        }
+        if (!merchantId.equals(existing.getMerchantId())) {
+            throw new BusinessException("无权操作其他店铺的营销活动");
+        }
+        couponDAO.updateStatus(couponId, status);
+    }
+
+    @Override
+    public List<CouponDO> listActiveByMerchant(Long merchantId) {
+        return couponDAO.findActiveByMerchant(merchantId);
     }
 
     // ===================== 用户端 =====================

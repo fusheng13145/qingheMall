@@ -102,7 +102,8 @@ const routes = [
     children: [
       { path: '', name: 'MerchantOverview', component: () => import('../views/merchant/Overview.vue') },
       { path: 'products', name: 'MerchantProducts', component: () => import('../views/merchant/Products.vue') },
-      { path: 'orders', name: 'MerchantOrders', component: () => import('../views/merchant/Orders.vue') }
+      { path: 'orders', name: 'MerchantOrders', component: () => import('../views/merchant/Orders.vue') },
+      { path: 'marketing', name: 'MerchantMarketing', component: () => import('../views/merchant/Marketing.vue') }
     ]
   },
   // P2-14：未知路由兜底 404 页面（必须置于路由表末尾）

@@ -84,8 +84,8 @@ public class SeckillServiceImpl implements SeckillService {
     @Lazy
     private OrderTimeoutQueue orderTimeoutQueue;
 
-    @Override
-    public SeckillActivityDO createActivity(SeckillActivityDO activity) {
+    /** 平台/商家活动通用校验（#39：提取复用）；返回绑定的 SKU 明细供归属校验 */
+    private ProductDetail validateActivity(SeckillActivityDO activity) {
         if (activity == null || activity.getProductDetailId() == null) {
             throw new BusinessException("活动绑定的商品规格不能为空");
         }
@@ -105,6 +105,11 @@ public class SeckillServiceImpl implements SeckillService {
         if (activity.getEndTime().before(activity.getStartTime())) {
             throw new BusinessException("活动结束时间必须晚于开始时间");
         }
+        return detail;
+    }
+
+    /** 公共落库：置 id/剩余库存/状态/时间 + 插入 + 预热 Redis 闸门 */
+    private SeckillActivityDO doCreate(SeckillActivityDO activity) {
         activity.setId(UUIDUtils.uuid());
         // 初始剩余库存 = 总库存
         activity.setRemainStock(activity.getTotalStock());
@@ -118,6 +123,12 @@ public class SeckillServiceImpl implements SeckillService {
         // P1-20：预热 Redis 库存闸门（TTL 至活动结束后 1 天）
         preheatStock(activity.getId(), activity.getTotalStock(), activity.getEndTime());
         return activity;
+    }
+
+    @Override
+    public SeckillActivityDO createActivity(SeckillActivityDO activity) {
+        validateActivity(activity);
+        return doCreate(activity);
     }
 
     @Override
@@ -137,6 +148,71 @@ public class SeckillServiceImpl implements SeckillService {
         paging.setTotalCount(page.getTotal());
         paging.setData(page.getResult());
         return paging;
+    }
+
+    // ===================== 商家端（#39） =====================
+
+    @Override
+    public SeckillActivityDO createMerchantActivity(Long merchantId, SeckillActivityDO activity) {
+        if (merchantId == null) {
+            throw new BusinessException("商家身份缺失");
+        }
+        ProductDetail detail = validateActivity(activity);
+        // 归属校验：SKU 须属本店
+        com.qinghe.mall.model.Product product = productService.findById(detail.getProductId());
+        if (product == null || !merchantId.equals(product.getMerchantId())) {
+            throw new BusinessException("秒杀须绑定本店商品");
+        }
+        activity.setMerchantId(merchantId);
+        return doCreate(activity);
+    }
+
+    @Override
+    public Paging<SeckillActivityDO> listMerchantActivities(Long merchantId, String status, int pageNum, int pageSize) {
+        if (pageNum < 1) {
+            pageNum = 1;
+        }
+        if (pageSize < 1 || pageSize > 50) {
+            pageSize = 10;
+        }
+        Page<SeckillActivityDO> page = PageHelper.startPage(pageNum, pageSize)
+                .doSelectPage(() -> activityDAO.findByMerchant(merchantId, status));
+        Paging<SeckillActivityDO> paging = new Paging<>();
+        paging.setPageNum(pageNum);
+        paging.setPageSize(pageSize);
+        paging.setTotalPage(page.getPages());
+        paging.setTotalCount(page.getTotal());
+        paging.setData(page.getResult());
+        return paging;
+    }
+
+    @Override
+    public void toggleMerchantActivity(Long merchantId, String activityId, String status) {
+        if (activityId == null || activityId.isEmpty()) {
+            throw new BusinessException("活动ID不能为空");
+        }
+        if (!"ONGOING".equals(status) && !"CLOSED".equals(status) && !"ENDED".equals(status)) {
+            throw new BusinessException("非法的活动状态");
+        }
+        SeckillActivityDO existing = activityDAO.findById(activityId);
+        if (existing == null) {
+            throw new BusinessException("活动不存在");
+        }
+        if (!merchantId.equals(existing.getMerchantId())) {
+            throw new BusinessException("无权操作其他店铺的营销活动");
+        }
+        activityDAO.updateStatus(activityId, status);
+        if ("ONGOING".equals(status)) {
+            SeckillActivityDO activity = activityDAO.findById(activityId);
+            if (activity != null) {
+                preheatStock(activityId, activity.getRemainStock(), activity.getEndTime());
+            }
+        }
+    }
+
+    @Override
+    public List<SeckillActivityDO> listOngoingByMerchant(Long merchantId) {
+        return activityDAO.findActiveByMerchant(merchantId);
     }
 
     @Override

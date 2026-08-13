@@ -16,20 +16,21 @@
         <result column="start_time" property="startTime" jdbcType="TIMESTAMP"/>
         <result column="end_time" property="endTime" jdbcType="TIMESTAMP"/>
         <result column="status" property="status" jdbcType="VARCHAR"/>
+        <result column="merchant_id" property="merchantId" jdbcType="BIGINT"/>
         <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
         <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
     </resultMap>
 
     <sql id="Base_Column_List">
         id, name, type, threshold, amount, discount, max_discount, total, issued,
-        per_limit, start_time, end_time, status, gmt_created, gmt_modified
+        per_limit, start_time, end_time, status, merchant_id, gmt_created, gmt_modified
     </sql>
 
     <insert id="insert" parameterType="com.qinghe.mall.dataobject.CouponDO">
         INSERT INTO `coupon` (id, name, type, threshold, amount, discount, max_discount, total,
-                              issued, per_limit, start_time, end_time, status, gmt_created, gmt_modified)
+                              issued, per_limit, start_time, end_time, status, merchant_id, gmt_created, gmt_modified)
         VALUES (#{id}, #{name}, #{type}, #{threshold}, #{amount}, #{discount}, #{maxDiscount}, #{total},
-                #{issued}, #{perLimit}, #{startTime}, #{endTime}, #{status}, #{gmtCreated}, #{gmtModified})
+                #{issued}, #{perLimit}, #{startTime}, #{endTime}, #{status}, #{merchantId}, #{gmtCreated}, #{gmtModified})
     </insert>
 
     <select id="findById" resultMap="BaseResultMap">
@@ -48,6 +49,22 @@
         SELECT <include refid="Base_Column_List"/>
         FROM `coupon`
         WHERE status = 'ACTIVE'
+          AND start_time &lt;= NOW() AND end_time &gt;= NOW()
+        ORDER BY gmt_created DESC
+    </select>
+
+    <select id="findByMerchant" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `coupon`
+        WHERE merchant_id = #{merchantId}
+        ORDER BY gmt_created DESC
+    </select>
+
+    <select id="findActiveByMerchant" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `coupon`
+        WHERE merchant_id = #{merchantId}
+          AND status = 'ACTIVE'
           AND start_time &lt;= NOW() AND end_time &gt;= NOW()
         ORDER BY gmt_created DESC
     </select>

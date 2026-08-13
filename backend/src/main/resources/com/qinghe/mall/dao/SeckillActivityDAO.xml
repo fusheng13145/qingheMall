@@ -11,6 +11,7 @@
         <result column="start_time" property="startTime" jdbcType="TIMESTAMP"/>
         <result column="end_time" property="endTime" jdbcType="TIMESTAMP"/>
         <result column="status" property="status" jdbcType="VARCHAR"/>
+        <result column="merchant_id" property="merchantId" jdbcType="BIGINT"/>
         <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
         <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
         <result column="product_name" property="productName" jdbcType="VARCHAR"/>
@@ -20,23 +21,23 @@
 
     <sql id="Base_Column_List">
         id, product_detail_id, seckill_price, total_stock, remain_stock,
-        start_time, end_time, status, gmt_created, gmt_modified
+        start_time, end_time, status, merchant_id, gmt_created, gmt_modified
     </sql>
 
     <!-- 列表用：JOIN product_detail / product 填充展示字段 -->
     <sql id="List_Column_List">
         sa.id, sa.product_detail_id, sa.seckill_price, sa.total_stock, sa.remain_stock,
-        sa.start_time, sa.end_time, sa.status, sa.gmt_created, sa.gmt_modified,
+        sa.start_time, sa.end_time, sa.status, sa.merchant_id, sa.gmt_created, sa.gmt_modified,
         pd.price as original_price, p.name as product_name, p.product_imgs as product_img
     </sql>
 
     <insert id="insert" parameterType="com.qinghe.mall.dataobject.SeckillActivityDO">
         INSERT INTO `seckill_activity`
             (id, product_detail_id, seckill_price, total_stock, remain_stock,
-             start_time, end_time, status, gmt_created, gmt_modified)
+             start_time, end_time, status, merchant_id, gmt_created, gmt_modified)
         VALUES
             (#{id}, #{productDetailId}, #{seckillPrice}, #{totalStock}, #{remainStock},
-             #{startTime}, #{endTime}, #{status}, #{gmtCreated}, #{gmtModified})
+             #{startTime}, #{endTime}, #{status}, #{merchantId}, #{gmtCreated}, #{gmtModified})
     </insert>
 
     <select id="findById" resultMap="BaseResultMap">
@@ -51,6 +52,31 @@
         LEFT JOIN `product_detail` pd ON pd.id = sa.product_detail_id
         LEFT JOIN `product` p ON p.id = pd.product_id
         WHERE sa.status = 'ONGOING'
+          AND sa.start_time &lt;= NOW() AND sa.end_time &gt;= NOW()
+        ORDER BY sa.start_time ASC
+    </select>
+
+    <select id="findByMerchant" resultMap="BaseResultMap">
+        SELECT <include refid="List_Column_List"/>
+        FROM `seckill_activity` sa
+        LEFT JOIN `product_detail` pd ON pd.id = sa.product_detail_id
+        LEFT JOIN `product` p ON p.id = pd.product_id
+        <where>
+            sa.merchant_id = #{merchantId}
+            <if test="status != null and status != ''">
+                AND sa.status = #{status}
+            </if>
+        </where>
+        ORDER BY sa.gmt_created DESC
+    </select>
+
+    <select id="findActiveByMerchant" resultMap="BaseResultMap">
+        SELECT <include refid="List_Column_List"/>
+        FROM `seckill_activity` sa
+        LEFT JOIN `product_detail` pd ON pd.id = sa.product_detail_id
+        LEFT JOIN `product` p ON p.id = pd.product_id
+        WHERE sa.merchant_id = #{merchantId}
+          AND sa.status = 'ONGOING'
           AND sa.start_time &lt;= NOW() AND sa.end_time &gt;= NOW()
         ORDER BY sa.start_time ASC
     </select>

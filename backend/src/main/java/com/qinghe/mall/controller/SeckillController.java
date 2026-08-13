@@ -25,9 +25,12 @@ public class SeckillController {
     @Autowired
     private SeckillService seckillService;
 
-    /** 进行中活动列表（含剩余库存与起止时间，前端据此倒计时） */
+    /** 进行中活动列表（含剩余库存与起止时间，前端据此倒计时）；merchantId 非空时仅返回该店进行中活动（#39 店铺页展示） */
     @GetMapping("/activities")
-    public Result<List<SeckillActivityDO>> activities() {
+    public Result<List<SeckillActivityDO>> activities(@RequestParam(value = "merchantId", required = false) Long merchantId) {
+        if (merchantId != null) {
+            return Result.success(seckillService.listOngoingByMerchant(merchantId));
+        }
         return Result.success(seckillService.listOngoing());
     }
 

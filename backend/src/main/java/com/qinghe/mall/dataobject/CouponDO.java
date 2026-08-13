@@ -5,7 +5,8 @@ import java.util.Date;
 
 /**
  * 优惠券模板（运营在后台创建）。
- * type: FULL_REDUCTION 满减 / DISCOUNT 折扣
+ * type: FULL_REDUCTION 满减 / DISCOUNT 折扣。
+ * merchantId: 归属商家ID（NULL=平台券；M6 平台化支持商家自建券）。
  */
 public class CouponDO {
 
@@ -22,6 +23,7 @@ public class CouponDO {
     private Date startTime;
     private Date endTime;
     private String status;
+    private Long merchantId;
     private Date gmtCreated;
     private Date gmtModified;
 
@@ -63,6 +65,9 @@ public class CouponDO {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public Long getMerchantId() { return merchantId; }
+    public void setMerchantId(Long merchantId) { this.merchantId = merchantId; }
 
     public Date getGmtCreated() { return gmtCreated; }
     public void setGmtCreated(Date gmtCreated) { this.gmtCreated = gmtCreated; }

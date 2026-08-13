@@ -4,10 +4,11 @@ import java.math.BigDecimal;
 import java.util.Date;
 
 /**
- * 秒杀活动 DO（M5-A3）。
+ * 秒杀活动 DO（M5-A3，#39 商家自建）。
  *
- * 后台创建，绑定一个 SKU，设定秒杀价、活动库存、起止时间与状态。
+ * 后台/商家创建，绑定一个 SKU，设定秒杀价、活动库存、起止时间与状态。
  * {@code remainStock} 为防超卖主防线：扣减走 {@code WHERE remain_stock >= ?} 的 CAS 更新。
+ * merchantId: 归属商家ID（NULL=平台秒杀；#39 商家自建秒杀须绑定本店 SKU）。
  */
 public class SeckillActivityDO {
 
@@ -19,6 +20,7 @@ public class SeckillActivityDO {
     private Date startTime;
     private Date endTime;
     private String status;
+    private Long merchantId;
     private Date gmtCreated;
     private Date gmtModified;
 
@@ -89,6 +91,14 @@ public class SeckillActivityDO {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public Long getMerchantId() {
+        return merchantId;
+    }
+
+    public void setMerchantId(Long merchantId) {
+        this.merchantId = merchantId;
     }
 
     public Date getGmtCreated() {

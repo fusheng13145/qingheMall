@@ -43,4 +43,17 @@ public interface SeckillService {
      * 由 OrderServiceImpl.closeAndRestoreStock 在已开启的事务内调用。
      */
     void rollbackIfUnpaid(String orderNumber);
+
+    // ===== 商家端（#39 商家自建） =====
+    /** 商家自建秒杀：强制 merchantId 归属，且 SKU 须属本店，复用平台校验规则 */
+    SeckillActivityDO createMerchantActivity(Long merchantId, SeckillActivityDO activity);
+
+    /** 本店活动分页（status 为空查全部） */
+    Paging<SeckillActivityDO> listMerchantActivities(Long merchantId, String status, int pageNum, int pageSize);
+
+    /** 商家上下架本店活动（须归属校验） */
+    void toggleMerchantActivity(Long merchantId, String activityId, String status);
+
+    /** 店铺进行中活动（供顾客端店铺页展示） */
+    List<SeckillActivityDO> listOngoingByMerchant(Long merchantId);
 }

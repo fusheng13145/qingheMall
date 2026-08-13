@@ -48,7 +48,7 @@ npm run dev                    # http://localhost:5173，/api 与 /uploads 已�
 qingheMall
 ├── backend/                       # 后端服务（Spring Boot / Maven）
 │   ├── index.sql                  # 数据库全量初始化脚本（建库建表 + 种子数据，17 表）
-│   ├── sql/migration/             # 存量库增量迁移脚本 v1.1~v2.6（幂等，16 个）
+│   ├── sql/migration/             # 存量库增量迁移脚本 v1.1~v2.7（幂等，17 个）
 │   ├── src/main/java/com/qinghe/mall/   # controller / service / dao / model / config / util
 │   ├── src/main/resources/        # application*.properties + MyBatis XML + seed-images
 │   └── src/test/java/             # 单元测试（565 用例，JaCoCo 行覆盖 89%+ 门禁）

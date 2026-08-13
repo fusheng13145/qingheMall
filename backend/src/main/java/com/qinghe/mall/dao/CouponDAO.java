@@ -24,4 +24,10 @@ public interface CouponDAO {
     int update(CouponDO coupon);
 
     int updateStatus(@Param("id") String id, @Param("status") String status);
+
+    /** 商家券列表（按 merchant_id 过滤，供 PageHelper 分页） */
+    List<CouponDO> findByMerchant(@Param("merchantId") Long merchantId);
+
+    /** 商家上架且在有效期内的券（店铺页展示/顾客端按店过滤） */
+    List<CouponDO> findActiveByMerchant(@Param("merchantId") Long merchantId);
 }

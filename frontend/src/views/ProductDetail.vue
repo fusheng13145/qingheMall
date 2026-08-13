@@ -97,6 +97,44 @@
       </div>
     </div>
 
+    <!-- 本店优惠（#39）：商家自建券 + 进行中秒杀，仅登录用户可见 -->
+    <div
+      v-if="userStore.isLoggedIn && product && product.merchantId && (shopCoupons.length > 0 || shopSeckills.length > 0)"
+      class="comment-section shop-offers"
+    >
+      <div class="comment-header">
+        <h2 class="comment-title">本店优惠</h2>
+      </div>
+      <div v-if="shopCoupons.length > 0" class="offer-block">
+        <h3 class="offer-subtitle">店铺优惠券</h3>
+        <div class="coupon-row">
+          <div v-for="c in shopCoupons" :key="c.id" class="shop-coupon">
+            <div class="coupon-amount">
+              <template v-if="c.type === 'FULL_REDUCTION'">¥{{ Number(c.amount || 0) }}</template>
+              <template v-else>{{ Math.round(Number(c.discount || 1) * 100) / 10 }}折</template>
+            </div>
+            <div class="coupon-meta">
+              <span class="coupon-name">{{ c.name }}</span>
+              <span class="coupon-cond">{{ couponRuleText(c) }}</span>
+            </div>
+            <button class="coupon-claim" @click="claimShopCoupon(c)">领取</button>
+          </div>
+        </div>
+      </div>
+      <div v-if="shopSeckills.length > 0" class="offer-block">
+        <h3 class="offer-subtitle">限时秒杀</h3>
+        <div class="seckill-row">
+          <router-link v-for="a in shopSeckills" :key="a.id" to="/seckill" class="shop-seckill">
+            <img v-if="a.productImg" :src="a.productImg" :alt="a.productName" class="seckill-img" />
+            <div class="seckill-info">
+              <span class="seckill-name">{{ a.productName || a.productDetailId }}</span>
+              <span class="seckill-price">¥{{ formatPrice(a.seckillPrice) }} <s>¥{{ formatPrice(a.originalPrice) }}</s></span>
+            </div>
+          </router-link>
+        </div>
+      </div>
+    </div>
+
     <!-- 用户评价区 -->
     <div class="comment-section">
       <div class="comment-header">
@@ -164,6 +202,9 @@ import { get, getProductDetails, pageQuery } from '../api/product'
 import { addOrder } from '../api/order'
 import { addCart } from '../api/cart'
 import { getCommentSummary, listProductComments } from '../api/comment'
+import { listShopCoupons, claimCoupon } from '../api/coupon'
+import { listShopSeckillActivities } from '../api/seckill'
+import { couponRuleText } from '../utils/coupon'
 import { useUserStore } from '../stores/user'
 import { useCartStore } from '../stores/cart'
 
@@ -189,6 +230,10 @@ const commentLoading = ref(true)
 
 // 同品牌推荐（P3）
 const relatedProducts = ref([])
+
+// 本店优惠（#39）：商家自建券 + 进行中秒杀
+const shopCoupons = ref([])
+const shopSeckills = ref([])
 
 const imageList = computed(() => {
   return splitImgs(product.value && product.value.productImgs)
@@ -264,6 +309,34 @@ async function loadProduct() {
   loadSummary(productId)
   loadComments(1)
   loadRelated()
+  loadShopOffers()
+}
+
+// 本店优惠（#39）：仅登录用户加载本店券与进行中秒杀；失败静默，不影响主流程
+async function loadShopOffers() {
+  const mid = product.value && product.value.merchantId
+  if (!mid || !userStore.isLoggedIn) return
+  try {
+    const [cRes, sRes] = await Promise.all([
+      listShopCoupons(mid),
+      listShopSeckillActivities(mid)
+    ])
+    shopCoupons.value = cRes.data || []
+    shopSeckills.value = sRes.data || []
+  } catch (error) {
+    shopCoupons.value = []
+    shopSeckills.value = []
+  }
+}
+
+function formatPrice(v) {
+  return Number(v || 0).toFixed(2)
+}
+
+function claimShopCoupon(c) {
+  claimCoupon(c.id)
+    .then(() => toast.success('领取成功，可在「我的券」中查看'))
+    .catch(e => apiError(e, '领取失败'))
 }
 
 async function loadSummary(productId) {
@@ -825,6 +898,143 @@ watch(
 .rating-count {
   font-size: 13px;
   color: var(--color-text-tertiary);
+}
+
+/* ========== 本店优惠（#39） ========== */
+.offer-block {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.offer-block:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.offer-subtitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 12px;
+}
+
+.coupon-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.shop-coupon {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-50);
+  border: 1px dashed var(--color-primary);
+  min-width: 220px;
+}
+
+.coupon-amount {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--color-primary);
+  white-space: nowrap;
+}
+
+.coupon-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.coupon-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.coupon-cond {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.coupon-claim {
+  padding: 6px 14px;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.coupon-claim:hover {
+  background: var(--color-primary-dark);
+}
+
+.seckill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.shop-seckill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-sunken);
+  border: 1px solid var(--color-border-light);
+  text-decoration: none;
+  transition: all var(--transition-fast);
+}
+
+.shop-seckill:hover {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.seckill-img {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--color-bg-sunken);
+}
+
+.seckill-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.seckill-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seckill-price {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-price);
+}
+
+.seckill-price s {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+  margin-left: 4px;
 }
 
 /* ========== 同品牌推荐 ========== */

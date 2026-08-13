@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.qinghe.mall.dataobject.MerchantDO;
 import com.qinghe.mall.dataobject.UserDO;
 import com.qinghe.mall.model.Product;
+import com.qinghe.mall.service.MerchantAuthService;
 import com.qinghe.mall.service.MerchantService;
 import com.qinghe.mall.service.OrderService;
 import com.qinghe.mall.service.ProductService;
@@ -42,6 +43,8 @@ class MerchantControllerExtraTest {
     private com.qinghe.mall.service.LogisticsService logisticsService;
     @Mock
     private com.qinghe.mall.service.RefundService refundService;
+    @Mock
+    private MerchantAuthService merchantAuthService;
 
     @InjectMocks
     private MerchantController merchantController;
@@ -74,6 +77,8 @@ class MerchantControllerExtraTest {
 
     private void mockActiveMerchant() {
         when(merchantService.getByUserId(10L)).thenReturn(merchant(10L, MerchantDO.STATUS_ACTIVE));
+        // #39：守卫逻辑已抽取为 MerchantAuthService，saveProduct 等接口依赖其返回本店商家
+        when(merchantAuthService.checkMerchant(any())).thenReturn(merchant(10L, MerchantDO.STATUS_ACTIVE));
     }
 
     @Test

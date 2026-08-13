@@ -74,3 +74,44 @@ export function merchantProcessRefund(orderNumber, approve = true, comment) {
 export function getMerchantStats() {
   return request.get('/merchant/stats')
 }
+
+// ===================== 商家端营销管理（#39） =====================
+// 全部接口经后端 MerchantAuthService 六重守卫 + Service 层 merchant_id 归属校验，杜绝跨店越权。
+
+// 商家自建券：POST /api/merchant/marketing/coupon/create（@RequestBody CouponDO，merchantId 由后端强制写入）
+export function createMerchantCoupon(data) {
+  return request.post('/merchant/marketing/coupon/create', data)
+}
+
+// 本店券分页（仅该商家全部状态）：GET /api/merchant/marketing/coupon/list?pageNum=&pageSize=
+// 返回 Paging<CouponDO>
+export function listMerchantCoupons(pageNum = 1, pageSize = 50) {
+  return request.get('/merchant/marketing/coupon/list', { params: { pageNum, pageSize } })
+}
+
+// 商家编辑本店券：POST /api/merchant/marketing/coupon/update（@RequestBody CouponDO，须含 id）
+export function updateMerchantCoupon(data) {
+  return request.post('/merchant/marketing/coupon/update', data)
+}
+
+// 商家上下架本店券：POST /api/merchant/marketing/coupon/toggle?couponId=&status=ACTIVE|INACTIVE
+export function toggleMerchantCoupon(couponId, status) {
+  return request.post('/merchant/marketing/coupon/toggle', null, { params: { couponId, status } })
+}
+
+// 商家自建秒杀：POST /api/merchant/marketing/seckill/create（@RequestBody SeckillActivityDO）
+// 后端校验 productDetailId 对应的 SKU 须属本店，否则拒绝
+export function createMerchantSeckill(data) {
+  return request.post('/merchant/marketing/seckill/create', data)
+}
+
+// 本店活动分页（status 为空查全部）：GET /api/merchant/marketing/seckill/list?status=&pageNum=&pageSize=
+// 返回 Paging<SeckillActivityDO>
+export function listMerchantSeckills(status = '', pageNum = 1, pageSize = 50) {
+  return request.get('/merchant/marketing/seckill/list', { params: { status, pageNum, pageSize } })
+}
+
+// 商家上下架本店活动：POST /api/merchant/marketing/seckill/toggle?activityId=&status=ONGOING|CLOSED
+export function toggleMerchantSeckill(activityId, status) {
+  return request.post('/merchant/marketing/seckill/toggle', null, { params: { activityId, status } })
+}

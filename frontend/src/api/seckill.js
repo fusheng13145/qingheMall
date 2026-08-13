@@ -14,3 +14,9 @@ export function getSeckillActivity(id) {
 export function createSeckillOrder(id, params) {
   return request.post('/seckill/' + id + '/createOrder', null, { params })
 }
+
+// 店铺秒杀（#39）：GET /api/seckill/activities?merchantId=（该店进行中活动）
+// 顾客端商品详情页据此展示「本店优惠」中的限时秒杀
+export function listShopSeckillActivities(merchantId) {
+  return request.get('/seckill/activities', { params: { merchantId } })
+}

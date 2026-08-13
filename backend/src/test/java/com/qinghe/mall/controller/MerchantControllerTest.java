@@ -18,6 +18,8 @@ import com.qinghe.mall.dataobject.MerchantDO;
 import com.qinghe.mall.dataobject.UserDO;
 import com.qinghe.mall.model.Order;
 import com.qinghe.mall.model.Product;
+import com.qinghe.mall.exception.AuthException;
+import com.qinghe.mall.service.MerchantAuthService;
 import com.qinghe.mall.service.MerchantService;
 import com.qinghe.mall.service.OrderService;
 import com.qinghe.mall.service.ProductService;
@@ -50,6 +52,9 @@ class MerchantControllerTest {
 
     @Mock
     private com.qinghe.mall.service.RefundService refundService;
+
+    @Mock
+    private MerchantAuthService merchantAuthService;
 
     @InjectMocks
     private MerchantController merchantController;
@@ -142,50 +147,47 @@ class MerchantControllerTest {
     }
 
     private void mockActiveMerchant() {
-        when(merchantService.getByUserId(10L)).thenReturn(merchant(10L, MerchantDO.STATUS_ACTIVE));
+        when(merchantAuthService.checkMerchant(any())).thenReturn(merchant(10L, MerchantDO.STATUS_ACTIVE));
     }
 
     @Test
     void products_unauthenticated_throws() throws Exception {
+        when(merchantAuthService.checkMerchant(any())).thenThrow(AuthException.unauthorized("未登录"));
         mockMvc.perform(get("/api/merchant/products"))
                 .andExpect(jsonPath("$.code").value(401));
     }
 
     @Test
     void products_roleNotMerchant_throws() throws Exception {
-        MockHttpSession session = new MockHttpSession();
-        session.setAttribute("userId", 10L);
-        session.setAttribute("role", UserDO.ROLE_USER);
-        mockMvc.perform(get("/api/merchant/products").session(session))
+        when(merchantAuthService.checkMerchant(any())).thenThrow(AuthException.forbidden("无商家权限"));
+        mockMvc.perform(get("/api/merchant/products").session(merchantSession(10L)))
                 .andExpect(jsonPath("$.code").value(403));
     }
 
     @Test
     void products_notRegistered_throws() throws Exception {
-        when(merchantService.getByUserId(10L)).thenReturn(null);
+        when(merchantAuthService.checkMerchant(any())).thenThrow(AuthException.forbidden("您还不是入驻商家，请先申请开店"));
         mockMvc.perform(get("/api/merchant/products").session(merchantSession(10L)))
                 .andExpect(jsonPath("$.code").value(403));
     }
 
     @Test
     void products_pending_throws() throws Exception {
-        when(merchantService.getByUserId(10L)).thenReturn(merchant(10L, MerchantDO.STATUS_PENDING));
+        when(merchantAuthService.checkMerchant(any())).thenThrow(AuthException.forbidden("入驻申请审核中，通过后即可经营"));
         mockMvc.perform(get("/api/merchant/products").session(merchantSession(10L)))
                 .andExpect(jsonPath("$.code").value(403));
     }
 
     @Test
     void products_rejected_throws() throws Exception {
-        MerchantDO rejected = merchant(10L, MerchantDO.STATUS_REJECTED);
-        rejected.setRejectReason("资质不全");
-        when(merchantService.getByUserId(10L)).thenReturn(rejected);
+        when(merchantAuthService.checkMerchant(any())).thenThrow(AuthException.forbidden("入驻申请未通过：资质不全"));
         mockMvc.perform(get("/api/merchant/products").session(merchantSession(10L)))
                 .andExpect(jsonPath("$.code").value(403));
     }
 
     @Test
     void products_disabled_throws() throws Exception {
-        when(merchantService.getByUserId(10L)).thenReturn(merchant(10L, MerchantDO.STATUS_DISABLED));
+        when(merchantAuthService.checkMerchant(any())).thenThrow(AuthException.forbidden("店铺已被禁用，请联系平台"));
         mockMvc.perform(get("/api/merchant/products").session(merchantSession(10L)))
                 .andExpect(jsonPath("$.code").value(403));
     }

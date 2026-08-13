@@ -23,6 +23,12 @@ public interface SeckillActivityDAO {
 
     int updateStatus(@Param("id") String id, @Param("status") String status);
 
+    /** 商家活动列表（按 merchant_id 过滤，status 为空查全部，供 PageHelper 分页） */
+    List<SeckillActivityDO> findByMerchant(@Param("merchantId") Long merchantId, @Param("status") String status);
+
+    /** 商家进行中活动（店铺页展示/顾客端按店过滤） */
+    List<SeckillActivityDO> findActiveByMerchant(@Param("merchantId") Long merchantId);
+
     /**
      * 活动库存 CAS 预扣：仅当 remain_stock >= quantity 时扣减，返回受影响行数。
      * 返回 0 表示库存不足（售罄），由调用方据此拒绝下单。防超卖主防线。

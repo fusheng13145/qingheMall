@@ -35,8 +35,8 @@ public class OrderController {
         return Result.success(result);
     }
 
-    /** 下单限流：20 次/秒，容量 30（防刷单） */
-    @RateLimit(rate = 20, message = "下单过于频繁，请稍后再试")
+    /** 下单限流：per-user 20 次/秒（解除全局 20/s 天花板，仍防单用户刷单，#36） */
+    @RateLimit(key = "order.add.{userId}", rate = 20, message = "下单过于频繁，请稍后再试")
     @PostMapping("/add")
     public Result<Order> addOrder(@RequestBody Order order, HttpServletRequest request) {
         Object userIdObj = request.getSession().getAttribute("userId");
@@ -50,7 +50,7 @@ public class OrderController {
      * 批量下单（购物车结算）：接收订单数组 [{productDetailId, quantity, receiverName, ...}]。
      * 部分成功语义：任一笔失败即中断，已创建订单保留。
      */
-    @RateLimit(rate = 20, message = "下单过于频繁，请稍后再试")
+    @RateLimit(key = "order.batchAdd.{userId}", rate = 20, message = "下单过于频繁，请稍后再试")
     @PostMapping("/batchAdd")
     public Result<List<Order>> batchAdd(@RequestBody List<Order> orders, HttpServletRequest request) {
         Object userIdObj = request.getSession().getAttribute("userId");

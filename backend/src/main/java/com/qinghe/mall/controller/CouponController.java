@@ -34,12 +34,16 @@ public class CouponController {
         return Result.success();
     }
 
-    /** 领券中心：上架且在有效期内的券 */
+    /** 领券中心：上架且在有效期内的券；merchantId 非空时仅返回该店铺可用券（#39 店铺页展示） */
     @GetMapping("/list")
-    public Result<List<CouponDO>> list(HttpServletRequest request) {
+    public Result<List<CouponDO>> list(@RequestParam(value = "merchantId", required = false) Long merchantId,
+                                       HttpServletRequest request) {
         Object userIdObj = request.getSession().getAttribute("userId");
         if (userIdObj == null) {
             return Result.fail(401, "未登录");
+        }
+        if (merchantId != null) {
+            return Result.success(couponService.listActiveByMerchant(merchantId));
         }
         return Result.success(couponService.listActive());
     }

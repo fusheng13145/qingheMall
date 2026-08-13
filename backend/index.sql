@@ -243,9 +243,11 @@ CREATE TABLE IF NOT EXISTS `coupon` (
   `start_time`    DATETIME      NOT NULL COMMENT '领取/可用开始时间',
   `end_time`      DATETIME      NOT NULL COMMENT '领取/可用结束时间',
   `status`        VARCHAR(16)   NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE 上架 / INACTIVE 下架',
+  `merchant_id`   BIGINT        DEFAULT NULL COMMENT '归属商家ID(NULL=平台券)',
   `gmt_created`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `gmt_modified`  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_merchant_id` (`merchant_id`) COMMENT '商家券索引'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='优惠券模板';
 
 CREATE TABLE IF NOT EXISTS `user_coupon` (
@@ -272,10 +274,12 @@ CREATE TABLE IF NOT EXISTS `seckill_activity` (
   `start_time`        DATETIME      NOT NULL COMMENT '活动开始时间',
   `end_time`          DATETIME      NOT NULL COMMENT '活动结束时间',
   `status`            VARCHAR(16)   NOT NULL DEFAULT 'NOT_START' COMMENT 'NOT_START / ONGOING / ENDED / CLOSED',
+  `merchant_id`       BIGINT        DEFAULT NULL COMMENT '归属商家ID(NULL=平台秒杀)',
   `gmt_created`       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `gmt_modified`      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_status_time` (`status`, `start_time`)
+  KEY `idx_status_time` (`status`, `start_time`),
+  KEY `idx_merchant_id` (`merchant_id`) COMMENT '商家秒杀索引'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='秒杀活动表';
 
 CREATE TABLE IF NOT EXISTS `seckill_order` (

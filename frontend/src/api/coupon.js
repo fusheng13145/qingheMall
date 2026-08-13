@@ -19,3 +19,9 @@ export function listCoupons() {
 export function availableCoupons(amount) {
   return request.get('/coupon/available', { params: { amount } })
 }
+
+// 店铺券（#39）：GET /api/coupon/list?merchantId=（上架且在有效期内的该店券）
+// 须登录（后端校验 401），顾客端商品详情页据此展示「本店优惠」
+export function listShopCoupons(merchantId) {
+  return request.get('/coupon/list', { params: { merchantId } })
+}

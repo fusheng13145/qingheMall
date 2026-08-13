@@ -48,4 +48,20 @@ public interface CouponService {
 
     /** 释放：USED→UNUSED 并清空订单绑定（取消订单/退款拒绝时调用） */
     void releaseCoupon(String userCouponId);
+
+    // ===== 商家端（#39 商家自建） =====
+    /** 商家自建券：强制 merchantId 归属，复用平台券校验规则 */
+    CouponDO createMerchantCoupon(Long merchantId, CouponDO coupon);
+
+    /** 本店券分页（仅返回该商家） */
+    Paging<CouponDO> listMerchantCoupons(Long merchantId, int pageNum, int pageSize);
+
+    /** 商家编辑本店券（须归属校验；上架中不可改策略同平台券） */
+    CouponDO updateMerchantCoupon(Long merchantId, CouponDO coupon);
+
+    /** 商家上下架本店券（须归属校验） */
+    void toggleMerchantCoupon(Long merchantId, String couponId, String status);
+
+    /** 店铺可用券（上架+有效期+该商家），供顾客端店铺页展示 */
+    List<CouponDO> listActiveByMerchant(Long merchantId);
 }
