@@ -209,7 +209,7 @@ class CouponServiceImplCoverageTest {
     void validate_nullUserCoupon_shouldThrow() {
         when(userCouponDAO.findById("uc1")).thenReturn(null);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("10")));
+                () -> couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("10"), null));
         assertEquals("优惠券不存在", ex.getMessage());
     }
 
@@ -221,7 +221,7 @@ class CouponServiceImplCoverageTest {
         uc.setCouponId("c1");
         when(userCouponDAO.findById("uc1")).thenReturn(uc);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("10")));
+                () -> couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("10"), null));
         assertEquals("优惠券不属于当前用户", ex.getMessage());
     }
 
@@ -233,7 +233,7 @@ class CouponServiceImplCoverageTest {
         uc.setCouponId("c1");
         when(userCouponDAO.findById("uc1")).thenReturn(uc);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("10")));
+                () -> couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("10"), null));
         assertEquals("优惠券已使用", ex.getMessage());
     }
 
@@ -246,7 +246,7 @@ class CouponServiceImplCoverageTest {
         when(userCouponDAO.findById("uc1")).thenReturn(uc);
         when(couponDAO.findById("c1")).thenReturn(null);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("10")));
+                () -> couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("10"), null));
         assertEquals("券模板不存在", ex.getMessage());
     }
 
@@ -261,7 +261,7 @@ class CouponServiceImplCoverageTest {
         when(userCouponDAO.findById("uc1")).thenReturn(uc);
         when(couponDAO.findById("c1")).thenReturn(c);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("10")));
+                () -> couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("10"), null));
         assertEquals("券已下架", ex.getMessage());
     }
 
@@ -277,7 +277,7 @@ class CouponServiceImplCoverageTest {
         when(userCouponDAO.findById("uc1")).thenReturn(uc);
         when(couponDAO.findById("c1")).thenReturn(c);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("10")));
+                () -> couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("10"), null));
         assertEquals("券不在有效期", ex.getMessage());
     }
 
@@ -294,7 +294,7 @@ class CouponServiceImplCoverageTest {
         when(userCouponDAO.findById("uc1")).thenReturn(uc);
         when(couponDAO.findById("c1")).thenReturn(c);
         assertEquals(new BigDecimal("5"),
-                couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("20")));
+                couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("20"), null));
     }
 
     // ========== claim 各拦截分支 ==========

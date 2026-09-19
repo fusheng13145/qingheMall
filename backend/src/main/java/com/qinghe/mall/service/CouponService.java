@@ -38,10 +38,16 @@ public interface CouponService {
     BigDecimal calculateDiscount(UserCouponDO userCoupon, BigDecimal orderTotal);
 
     /**
-     * 后端权威校验并计算优惠额（不锁定）：校验归属/未用/上架/时间窗/门槛，返回优惠额。
+     * 后端权威校验并计算优惠额（不锁定）：校验归属/未用/上架/时间窗/门槛/店铺归属，返回优惠额。
      * 用于下单前校验前端传入的优惠额未被伪造；锁定由 lockCoupon 在订单事务内完成。
+     *
+     * <p>店铺归属校验（A1）：券 merchant_id 非空（店铺券）时必须与待购商品的商家一致，
+     * 否则拒绝核销；merchant_id 为 NULL（平台券）全站可用。</p>
+     *
+     * @param productMerchantId 待购商品归属商家（由 product.merchant_id 解析；NULL=平台自营/未知）
      */
-    BigDecimal validateAndComputeDiscount(String userCouponId, Long userId, BigDecimal orderTotal);
+    BigDecimal validateAndComputeDiscount(String userCouponId, Long userId, BigDecimal orderTotal,
+                                          Long productMerchantId);
 
     /** 核销锁定：CAS 将 UNUSED→USED 并绑定订单号（事务内调用） */
     void lockCoupon(String userCouponId, Long userId, String orderNumber);

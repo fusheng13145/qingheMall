@@ -1,7 +1,11 @@
 # ============================================================
-# Alertmanager 配置（P1-9 告警出口）
+# Alertmanager 配置（P1-9 告警出口；C2 分级路由细化）
 # 由 docker-compose 挂载到 /etc/alertmanager/alertmanager.yml
 # 上游：Prometheus alerting → alertmanager:9093
+#
+# 分级路由（C2）：
+#   severity=critical → ops-pager（快速通道：group_wait 10s + 重复提醒 30m）
+#   severity=warning  → ops-im（普通通道：group_wait 30s + 重复提醒 4h）
 #
 # 通知渠道说明：
 #   默认配置 webhook 接收器（占位地址）。接入真实渠道时二选一：
@@ -18,19 +22,33 @@ route:
   group_by: ["alertname", "severity"]
   group_wait: 30s        # 首次等待聚合
   group_interval: 5m     # 同组新增告警间隔
-  repeat_interval: 4h    # 未恢复告警重复提醒间隔
-  receiver: default-webhook
+  repeat_interval: 4h    # 未恢复告警重复提醒间隔（warning 默认）
+  receiver: ops-im
   routes:
-    # critical（如 BackendDown）缩短重复间隔，更快重复提醒
+    # critical（BackendDown / OrderTimeoutDeadLetter）：
+    # 快速通道——10s 内即发出（不等聚合）、重复提醒缩短至 30m
     - matchers:
         - severity = critical
-      receiver: default-webhook
-      repeat_interval: 1h
+      receiver: ops-pager
+      group_wait: 10s
+      repeat_interval: 30m
+    # warning（5xx 率/P95/限流风暴/缓存命中率/秒杀水位等）：
+    # 普通通道——默认聚合节奏，4h 重复提醒
+    - matchers:
+        - severity = warning
+      receiver: ops-im
+      repeat_interval: 4h
 
 receivers:
-  - name: default-webhook
+  # critical 快速通道接收器（占位 webhook：替换为电话/短信/钉钉高频机器人）
+  - name: ops-pager
     webhook_configs:
-      # ⚠️ 占位地址：请替换为真实 webhook（钉钉/企微适配器或自有告警网关）
+      - url: "http://alert-webhook:8060/dingtalk/pager/send"
+        send_resolved: true
+
+  # warning 普通通道接收器（占位 webhook：替换为钉钉/企微群机器人）
+  - name: ops-im
+    webhook_configs:
       - url: "http://alert-webhook:8060/dingtalk/ops/send"
         send_resolved: true
 
@@ -45,9 +63,9 @@ receivers:
   #       require_tls: true
 
 inhibit_rules:
-  # 实例已宕机（BackendDown）时，抑制其派生的错误率/延迟告警，减少噪音
+  # 实例已宕机（BackendDown）时，抑制其派生的错误率/延迟/中间件类告警，减少噪音
   - source_matchers:
       - alertname = BackendDown
     target_matchers:
-      - alertname =~ "HighHttpErrorRate|HighHttpLatency"
+      - alertname =~ "HighHttpErrorRate|HighHttpLatency|RateLimitStorm|ProductCacheHitRatioLow|SeckillStockLow|OrderTimeoutDeadLetter"
     equal: ["application"]

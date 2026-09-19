@@ -1,0 +1,70 @@
+# ============================================================
+# Grafana 统一告警规则（C2 告警细化，v1.4）
+# 由 docker-compose 挂载到 /etc/grafana/provisioning/alerting
+#
+# 说明：Prometheus 无法查询 Loki，日志类告警由 Grafana 统一告警承载
+#（数据源 uid=loki-qinghe，见 ../datasources/datasource.yml）；
+# 指标类告警（5xx/P95/限流/缓存/秒杀/死信）仍在 deploy/alert.rules.yml，
+# 经 Prometheus → Alertmanager 分级路由。
+#
+# Loki 标签来源：logback-spring.xml 的 LOKI appender（app=qinghe-mall, level=%level）
+# ============================================================
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: qinghe-mall-logs
+    folder: 青禾商城
+    interval: 1m
+    rules:
+      - uid: qinghe-loki-error-rate
+        title: 后端 ERROR 日志速率过高
+        condition: C
+        for: 5m
+        annotations:
+          summary: 后端 ERROR 日志速率异常
+          description: 近 5 分钟 qinghe-mall 后端 ERROR 日志聚合速率超过 1 条/秒，可能存在批量业务异常或系统故障；请到 Grafana Loki Explore 结合 traceId 排查。
+        labels:
+          severity: warning
+          team: backend
+        data:
+          # A：Loki 即时查询——ERROR 日志 5m 聚合速率
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki-qinghe
+            model:
+              datasource:
+                type: loki
+                uid: loki-qinghe
+              editorMode: code
+              expr: sum(rate({app="qinghe-mall", level="ERROR"}[5m]))
+              queryType: instant
+              refId: A
+          # C：阈值表达式——速率 > 1 触发
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold

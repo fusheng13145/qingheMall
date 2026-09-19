@@ -235,7 +235,7 @@ class CouponServiceImplAdditionalTest {
     void validate_couponNotFound_throws() {
         when(userCouponDAO.findById("U1")).thenReturn(null);
         assertThrows(RuntimeException.class,
-                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200")));
+                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200"), null));
     }
 
     @Test
@@ -247,7 +247,7 @@ class CouponServiceImplAdditionalTest {
         uc.setStatus("UNUSED");
         when(userCouponDAO.findById("U1")).thenReturn(uc);
         assertThrows(RuntimeException.class,
-                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200")),
+                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200"), null),
                 "优惠券不属于当前用户");
     }
 
@@ -260,7 +260,7 @@ class CouponServiceImplAdditionalTest {
         uc.setStatus("USED");
         when(userCouponDAO.findById("U1")).thenReturn(uc);
         assertThrows(RuntimeException.class,
-                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200")));
+                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200"), null));
     }
 
     @Test
@@ -276,12 +276,12 @@ class CouponServiceImplAdditionalTest {
         template.setStatus("INACTIVE");
         when(couponDAO.findById("C1")).thenReturn(template);
         assertThrows(RuntimeException.class,
-                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200")));
+                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200"), null));
 
         template.setStatus("ACTIVE");
         template.setEndTime(new Date(System.currentTimeMillis() - 1000L));
         assertThrows(RuntimeException.class,
-                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200")));
+                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200"), null));
     }
 
     @Test
@@ -298,7 +298,71 @@ class CouponServiceImplAdditionalTest {
         when(userCouponDAO.findById("U1")).thenReturn(uc);
         when(couponDAO.findById("C1")).thenReturn(activeCoupon);
 
-        BigDecimal discount = couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200"));
+        BigDecimal discount = couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200"), null);
+
+        assertEquals(0, new BigDecimal("20").compareTo(discount));
+    }
+
+    // ============ A1：店铺券核销归属一致性（merchant_id 校验） ============
+
+    /** 构造未用券持有记录 + 指定模板存根 */
+    private UserCouponDO stubCouponWith(CouponDO template) {
+        UserCouponDO uc = new UserCouponDO();
+        uc.setId("U1");
+        uc.setUserId(1L);
+        uc.setStatus("UNUSED");
+        uc.setCouponId(template.getId());
+        uc.setCouponType("FULL_REDUCTION");
+        uc.setThreshold(new BigDecimal("100"));
+        uc.setCouponAmount(new BigDecimal("20"));
+        when(userCouponDAO.findById("U1")).thenReturn(uc);
+        when(couponDAO.findById(template.getId())).thenReturn(template);
+        return uc;
+    }
+
+    @Test
+    @DisplayName("A1 店铺券核销于本店商品：放行")
+    void validate_shopCoupon_sameShop_passes() {
+        CouponDO template = activeCoupon;
+        template.setMerchantId(5L);
+        stubCouponWith(template);
+
+        BigDecimal discount = couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200"), 5L);
+
+        assertEquals(0, new BigDecimal("20").compareTo(discount));
+    }
+
+    @Test
+    @DisplayName("A1 店铺券核销于他店商品：拒绝")
+    void validate_shopCoupon_crossShop_throws() {
+        CouponDO template = activeCoupon;
+        template.setMerchantId(5L);
+        stubCouponWith(template);
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200"), 9L));
+        assertEquals("店铺券仅可用于本店商品", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("A1 店铺券核销于平台自营/无归属商品：拒绝")
+    void validate_shopCoupon_platformProduct_throws() {
+        CouponDO template = activeCoupon;
+        template.setMerchantId(5L);
+        stubCouponWith(template);
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200"), null));
+        assertEquals("店铺券仅可用于本店商品", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("A1 平台券（merchant_id=NULL）核销于任意店铺商品：放行")
+    void validate_platformCoupon_anyShop_passes() {
+        // activeCoupon 未设 merchantId（NULL=平台券）
+        stubCouponWith(activeCoupon);
+
+        BigDecimal discount = couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("200"), 9L);
 
         assertEquals(0, new BigDecimal("20").compareTo(discount));
     }

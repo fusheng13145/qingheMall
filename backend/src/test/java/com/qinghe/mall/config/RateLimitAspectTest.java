@@ -118,6 +118,39 @@ class RateLimitAspectTest {
         assertEquals("too fast", exception.getMessage());
     }
 
+    @Test
+    void rateLimitRejection_incrementsCounter_withNormalizedKey() throws Throwable {
+        // C2：限流命中打点（meterRegistry 就绪时），per-user 桶 key 归一化为接口维度
+        io.micrometer.core.instrument.simple.SimpleMeterRegistry registry =
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        ReflectionTestUtils.setField(aspect, "meterRegistry", registry);
+        stubPrefixedKey();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpSession sess = mock(HttpSession.class);
+        when(req.getSession()).thenReturn(sess);
+        when(sess.getAttribute("userId")).thenReturn("42");
+        ServletRequestAttributes attrs = mock(ServletRequestAttributes.class);
+        when(attrs.getRequest()).thenReturn(req);
+        RequestContextHolder.setRequestAttributes(attrs);
+
+        when(limiter.trySetRate(any(), anyLong(), anyLong(), any())).thenReturn(false);
+        when(limiter.tryAcquire()).thenReturn(false);
+        assertThrows(RateLimitException.class, () -> aspect.around(joinPoint, prefixedAnnotation()));
+
+        // limiterKey=order.add.user:42 → tag 归一化 order.add.user:*（防 tag 基数膨胀）
+        assertEquals(1.0, registry.get("qinghe.ratelimit.rejected")
+                .tag("key", "order.add.user:*").counter().count());
+        RequestContextHolder.resetRequestAttributes();
+    }
+
+    @Test
+    void rateLimitRejection_withoutRegistry_skipsMetric() throws Exception {
+        // meterRegistry 未注入（纯 mock 单测环境）→ 不打点、仍正常拒绝
+        when(limiter.trySetRate(any(), anyLong(), anyLong(), any())).thenReturn(false);
+        when(limiter.tryAcquire()).thenReturn(false);
+        assertThrows(RateLimitException.class, () -> aspect.around(joinPoint, annotation()));
+    }
+
     // ============ {userId} 维度分支 ============
 
     @Test

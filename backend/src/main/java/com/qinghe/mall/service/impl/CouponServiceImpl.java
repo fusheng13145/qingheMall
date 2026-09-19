@@ -280,7 +280,8 @@ public class CouponServiceImpl implements CouponService {
     }
 
     @Override
-    public BigDecimal validateAndComputeDiscount(String userCouponId, Long userId, BigDecimal orderTotal) {
+    public BigDecimal validateAndComputeDiscount(String userCouponId, Long userId, BigDecimal orderTotal,
+                                                 Long productMerchantId) {
         UserCouponDO uc = userCouponDAO.findById(userCouponId);
         if (uc == null) {
             throw new BusinessException("优惠券不存在");
@@ -301,6 +302,11 @@ public class CouponServiceImpl implements CouponService {
         Date now = new Date();
         if (now.before(coupon.getStartTime()) || now.after(coupon.getEndTime())) {
             throw new BusinessException("券不在有效期");
+        }
+        // A1：店铺券归属一致性——商家券仅可核销于本店商品（跨店/平台自营商品一律拒绝），
+        // merchant_id 为 NULL 的平台券全站可用
+        if (coupon.getMerchantId() != null && !coupon.getMerchantId().equals(productMerchantId)) {
+            throw new BusinessException("店铺券仅可用于本店商品");
         }
         return calculateDiscount(uc, orderTotal);
     }

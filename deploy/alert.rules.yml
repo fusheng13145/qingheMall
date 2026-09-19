@@ -55,13 +55,64 @@ groups:
           summary: "JVM 堆内存使用率过高"
           description: "堆内存使用率 {{ $value | humanizePercentage }} 超过 85%，持续 10 分钟，关注是否存在内存泄漏或需要扩容。"
 
+      # ============================================================
+      # C2 告警细化（v1.4）：业务/中间件维度告警，指标均为后端 Micrometer
+      # 经 /actuator/prometheus 暴露的自定义指标（见手册 §9.3-C2）
+      # ============================================================
+
+      # 限流命中风暴：近 5 分钟聚合拒绝速率 > 1/s（per-user 防刷正常为偶发，
+      # 聚合超阈值意味着批量爬虫/攻击或某接口被大量用户打满）
+      - alert: RateLimitStorm
+        expr: |
+          sum(rate(qinghe_ratelimit_rejected_total[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "限流命中速率异常"
+          description: "近 5 分钟限流拒绝聚合 {{ $value | humanize }} 次/秒，超过 1/s 阈值；请结合 Grafana 按 key 标签定位被刷接口（tag 已按接口维度归一化）。"
+
+      # 商品缓存命中率过低：< 30% 持续 15 分钟（缓存收益失效——
+      # 失效风暴/Redis 抖动/写穿透放大，回源压力将传导至 MySQL）
+      - alert: ProductCacheHitRatioLow
+        expr: |
+          qinghe_product_cache_hitratio < 0.3
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "商品缓存命中率过低"
+          description: "商品缓存命中率 {{ $value | humanizePercentage }} 低于 30% 且持续 15 分钟（启动预热期误报已由 for 时长规避），排查 Redis 状态与写失效模式。"
+
+      # 秒杀库存水位过低：任一进行中活动 Redis 闸门剩余 ≤ 5
+      # （运营视角：临近售罄提醒，activityId 标签可定位具体活动）
+      - alert: SeckillStockLow
+        expr: |
+          qinghe_seckill_stock_remain <= 5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "秒杀活动库存水位过低（活动 {{ $labels.activityId }}）"
+          description: "秒杀活动 {{ $labels.activityId }} 的 Redis 闸门剩余库存仅 {{ $value }}，即将售罄；如需扩容请追加活动库存并重建闸门（toggle ONGOING 自动预热）。"
+
+      # 延迟关单死信：10 分钟内出现任何死信（关单任务重试耗尽，
+      # 意味着超时订单未被关闭、库存/券未回补，必须人工介入）
+      - alert: OrderTimeoutDeadLetter
+        expr: |
+          increase(qinghe_order_timeout_deadletter_total[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "订单超时关单出现死信"
+          description: "近 10 分钟出现 {{ $value | humanize }} 条延迟关单死信，超时订单未被关闭（库存/券未回补），请立即人工核查 order 表 WAIT_BUYER_PAY 超时单并手动关闭。"
+
 # ------------------------------------------------------------
-# 通知接入（P1-9 已启用 Alertmanager 链路）：
+# 通知接入（P1-9 已启用 Alertmanager 链路；C2 已按 severity 分级路由）：
 # 1) Prometheus → Alertmanager：prometheus.yml alerting 段已指向
-#    alertmanager:9093；通知渠道（webhook/邮件）在 deploy/alertmanager.yml
-#    中配置，替换占位 url 即可通知到人；
-# 2) 或 Grafana 统一告警（Grafana 10+ 内置）：在
-#    deploy/grafana/provisioning/alerting/ 下配置 contact_points + rules，
-#    可直接将上面这些 Prometheus 指标作为 Grafana 告警数据源推送到
-#    邮件 / 钉钉 / Webhook 等渠道。
+#    alertmanager:9093；分级通知渠道（critical→ops-pager / warning→ops-im）
+#    在 deploy/alertmanager.yml 中配置，替换占位 url 即可通知到人；
+# 2) 或 Grafana 统一告警（Grafana 10+ 内置）：Loki ERROR 日志速率告警
+#    已随 C2 落地于 deploy/grafana/provisioning/alerting/（Prometheus
+#    无法查询 Loki，日志类告警由 Grafana 统一告警承载）。
 # ------------------------------------------------------------

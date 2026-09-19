@@ -1,6 +1,7 @@
 package com.qinghe.mall.config;
 
 import com.qinghe.mall.exception.RateLimitException;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -38,6 +39,13 @@ public class RateLimitAspect {
     @Autowired
     private RedissonClient redissonClient;
 
+    /** 限流命中计数（C2 告警）：可选注入，纯 mock 单测环境为 null 时跳过打点 */
+    @Autowired(required = false)
+    private MeterRegistry meterRegistry;
+
+    /** 限流命中计数指标（Prometheus：qinghe_ratelimit_rejected_total，tag key=接口维度归一化） */
+    private static final String METRIC_RATELIMIT_REJECTED = "qinghe.ratelimit.rejected";
+
     @Around("@annotation(rateLimit)")
     public Object around(ProceedingJoinPoint joinPoint, RateLimit rateLimit) throws Throwable {
         String limiterKey = resolveKey(joinPoint, rateLimit);
@@ -49,9 +57,22 @@ public class RateLimitAspect {
 
         if (!limiter.tryAcquire()) {
             log.warn("rate limit hit: key={}", limiterKey);
+            recordRejection(limiterKey);
             throw new RateLimitException(rateLimit.message());
         }
         return joinPoint.proceed();
+    }
+
+    /**
+     * 限流命中打点（C2）：per-user 桶的 {userId} 后缀归一化为 user:*，
+     * 避免 tag 基数随用户数膨胀，告警按接口维度聚合。
+     */
+    private void recordRejection(String limiterKey) {
+        if (meterRegistry == null) {
+            return;
+        }
+        String tagKey = limiterKey.replaceAll("user:\\d+$", "user:*");
+        meterRegistry.counter(METRIC_RATELIMIT_REJECTED, "key", tagKey).increment();
     }
 
     /**

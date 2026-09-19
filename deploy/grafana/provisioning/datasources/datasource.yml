@@ -17,8 +17,10 @@ datasources:
       timeInterval: 15s
 
   # 阶段二 C 日志聚合：Loki 数据源（后端 loki4j appender 直推，#22）
+  # uid 固定：C2 的 Grafana 统一告警（Loki ERROR 速率规则）按 uid 引用数据源
   - name: Loki
     type: loki
+    uid: loki-qinghe
     access: proxy
     url: http://loki:3100
     isDefault: false

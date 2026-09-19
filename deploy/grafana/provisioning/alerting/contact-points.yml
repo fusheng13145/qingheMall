@@ -1,0 +1,20 @@
+# ============================================================
+# Grafana 统一告警——联系点（C2，v1.4）
+# 由 docker-compose 挂载到 /etc/grafana/provisioning/alerting
+#
+# ⚠️ 占位 webhook：接入真实渠道时替换 url（钉钉/企微机器人或自有告警网关）。
+# 未接入真实渠道前，告警可在 Grafana UI（Alerting → Notification history）查看。
+# ============================================================
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: qinghe-ops-webhook
+    receivers:
+      - uid: qinghe-ops-webhook-receiver
+        type: webhook
+        settings:
+          url: http://alert-webhook:8060/dingtalk/ops/send
+          httpMethod: POST
+          maxAlerts: "0"
+        disableResolveMessage: false

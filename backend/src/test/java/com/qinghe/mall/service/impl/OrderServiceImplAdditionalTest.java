@@ -138,6 +138,9 @@ class OrderServiceImplAdditionalTest {
     @DisplayName("createOrder 带券：锁定券并改写实付金额")
     void createOrder_withCoupon_discountsPayable() {
         mockCreateOrderHappyPath(2);
+        // A1：createOrder 核销前权威校验（原价 100×2=200），传入额与计算值一致
+        when(couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("200.00"), null))
+                .thenReturn(new BigDecimal("30.00"));
         // lockCoupon 为 void，无需 stub（mock 默认空操作）
         Order created = orderService.createOrder(
                 order(1L, "pd1", 2), "uc1", new BigDecimal("30.00"));
@@ -165,12 +168,47 @@ class OrderServiceImplAdditionalTest {
     @DisplayName("createOrder 优惠超过原价时实付归零")
     void createOrder_couponExceedsTotal_payableZero() {
         mockCreateOrderHappyPath();
-        // lockCoupon 为 void，无需 stub
+        // A1：核销前权威校验以计算值比对传入额（后端计算同为 500 才放行）
+        when(couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("100.00"), null))
+                .thenReturn(new BigDecimal("500.00"));
 
         Order created = orderService.createOrder(
                 order(1L, "pd1", 1), "uc1", new BigDecimal("500.00"));
 
         assertEquals(0, BigDecimal.ZERO.compareTo(created.getTotalPrice()));
+    }
+
+    @Test
+    @DisplayName("A1 createOrder 直接下单带券：跨店券核销被权威校验拒绝")
+    void createOrder_crossShopCoupon_rejectedByValidation() {
+        // 商品归属商家 5（p001 → merchantId=5）
+        com.qinghe.mall.model.Product shopProduct = new com.qinghe.mall.model.Product();
+        shopProduct.setMerchantId(5L);
+        when(productDetailService.findById("pd1")).thenReturn(detail("pd1", new BigDecimal("100.00"), 50));
+        when(productService.findById("p001")).thenReturn(shopProduct);
+        // 权威校验抛出跨店拒绝（CouponServiceImpl 层校验，这里模拟服务拒绝）
+        when(couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("100.00"), 5L))
+                .thenThrow(new RuntimeException("店铺券仅可用于本店商品"));
+
+        assertThrows(RuntimeException.class,
+                () -> orderService.createOrder(order(1L, "pd1", 1), "uc1", new BigDecimal("10.00")),
+                "店铺券仅可用于本店商品");
+        // 未锁券、未生成订单
+        verify(couponService, never()).lockCoupon(any(), any(), any());
+        verify(orderDAO, never()).insert(any(OrderDO.class));
+    }
+
+    @Test
+    @DisplayName("A1 createOrder 直接下单带券：传入优惠额与后端计算不一致拒绝")
+    void createOrder_directCouponAmountMismatch_throws() {
+        mockCreateOrderHappyPath();
+        when(couponService.validateAndComputeDiscount("uc1", 1L, new BigDecimal("100.00"), null))
+                .thenReturn(new BigDecimal("20.00"));
+
+        assertThrows(RuntimeException.class,
+                () -> orderService.createOrder(order(1L, "pd1", 1), "uc1", new BigDecimal("10.00")),
+                "优惠金额校验失败");
+        verify(couponService, never()).lockCoupon(any(), any(), any());
     }
 
     // ============ batchCreateOrders ============
@@ -213,7 +251,7 @@ class OrderServiceImplAdditionalTest {
         o1.setDiscountAmount(new BigDecimal("10.00")); // 伪造
         when(productDetailService.findById("pd1")).thenReturn(detail("pd1", new BigDecimal("100.00"), 50));
         // 后端权威计算为 20
-        when(couponService.validateAndComputeDiscount("c1", 1L, new BigDecimal("100.00")))
+        when(couponService.validateAndComputeDiscount("c1", 1L, new BigDecimal("100.00"), null))
                 .thenReturn(new BigDecimal("20.00"));
 
         assertThrows(RuntimeException.class, () -> orderService.batchCreateOrders(List.of(o1)),
@@ -227,7 +265,7 @@ class OrderServiceImplAdditionalTest {
         o1.setCouponId("c1");
         o1.setDiscountAmount(new BigDecimal("20.00"));
         when(productDetailService.findById("pd1")).thenReturn(detail("pd1", new BigDecimal("100.00"), 50));
-        when(couponService.validateAndComputeDiscount("c1", 1L, new BigDecimal("100.00")))
+        when(couponService.validateAndComputeDiscount("c1", 1L, new BigDecimal("100.00"), null))
                 .thenReturn(new BigDecimal("20.00"));
         mockCreateOrderHappyPath();
         // lockCoupon 为 void，无需 stub

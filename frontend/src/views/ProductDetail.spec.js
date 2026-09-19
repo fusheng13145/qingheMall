@@ -17,6 +17,15 @@ const { getCommentSummary, listProductComments } = vi.hoisted(() => ({
   getCommentSummary: vi.fn(),
   listProductComments: vi.fn()
 }))
+// #39「本店优惠」区块新增的店铺券/秒杀 API——不 mock 会经 utils/request 引入真实
+// router（顶层 createRouter）撞上 vue-router mock，导致整个 suite 加载失败
+const { listShopCoupons, claimCoupon } = vi.hoisted(() => ({
+  listShopCoupons: vi.fn(),
+  claimCoupon: vi.fn()
+}))
+const { listShopSeckillActivities } = vi.hoisted(() => ({
+  listShopSeckillActivities: vi.fn()
+}))
 const { mockUserStore, mockCartStore } = vi.hoisted(() => ({
   mockUserStore: { isLoggedIn: false },
   mockCartStore: { refreshCount: vi.fn() }
@@ -30,6 +39,8 @@ vi.mock('../api/product', () => ({ get, getProductDetails, pageQuery }))
 vi.mock('../api/order', () => ({ addOrder }))
 vi.mock('../api/cart', () => ({ addCart }))
 vi.mock('../api/comment', () => ({ getCommentSummary, listProductComments }))
+vi.mock('../api/coupon', () => ({ listShopCoupons, claimCoupon }))
+vi.mock('../api/seckill', () => ({ listShopSeckillActivities }))
 vi.mock('../stores/user', () => ({ useUserStore: () => mockUserStore }))
 vi.mock('../stores/cart', () => ({ useCartStore: () => mockCartStore }))
 

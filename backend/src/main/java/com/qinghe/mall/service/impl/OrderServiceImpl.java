@@ -157,12 +157,25 @@ public class OrderServiceImpl implements OrderService {
                     // 生成订单号
                     String orderNumber = generateOrderNumber();
 
-                    // 优惠券核销（仅当传入 userCouponId 时）：事务内原子锁定并改写实付金额
+                    // 优惠券核销（仅当传入 userCouponId 时）：事务内原子锁定并改写实付金额。
+                    // 商家归属先行解析（A1 券核销范围校验依赖 product.merchant_id）
                     BigDecimal originalTotal = pd.getPrice().multiply(BigDecimal.valueOf(quantity));
                     BigDecimal payable = originalTotal;
+                    Long merchantId = null;
+                    if (pd != null && StringUtils.isNotBlank(pd.getProductId())) {
+                        Product product = productService.findById(pd.getProductId());
+                        merchantId = product != null ? product.getMerchantId() : null;
+                    }
                     if (StringUtils.isNotBlank(userCouponId)) {
                         if (discountAmount == null) {
                             throw new BusinessException("优惠金额缺失");
+                        }
+                        // A1：核销前二次权威校验（归属/未用/上架/时间窗/门槛/店铺归属一致性），
+                        // 并以后端计算值为准比对传入优惠额，直接调用本方法也无法伪造优惠金额
+                        BigDecimal computed = couponService.validateAndComputeDiscount(
+                                userCouponId, order.getUserId(), originalTotal, merchantId);
+                        if (discountAmount.compareTo(computed) != 0) {
+                            throw new BusinessException("优惠金额校验失败");
                         }
                         // 锁定用户券（CAS：仅本人未使用的券可锁定），并绑定订单号
                         couponService.lockCoupon(userCouponId, order.getUserId(), orderNumber);
@@ -177,11 +190,6 @@ public class OrderServiceImpl implements OrderService {
                     orderDO.setOrderNumber(orderNumber);
                     orderDO.setUserId(order.getUserId());
                     // 商家归属：由商品归属推导落库（NULL=平台自营，M6）
-                    Long merchantId = null;
-                    if (pd != null && StringUtils.isNotBlank(pd.getProductId())) {
-                        Product product = productService.findById(pd.getProductId());
-                        merchantId = product != null ? product.getMerchantId() : null;
-                    }
                     orderDO.setMerchantId(merchantId);
                     orderDO.setProductDetailId(productDetailId);
                     orderDO.setQuantity(quantity);
@@ -257,9 +265,12 @@ public class OrderServiceImpl implements OrderService {
             int qty = couponOrder.getQuantity() != null && couponOrder.getQuantity() > 0
                     ? couponOrder.getQuantity() : 1;
             BigDecimal totalOrigin = pd.getPrice().multiply(BigDecimal.valueOf(qty));
-            // 后端权威校验并计算优惠额（校验归属/未用/上架/时间窗/门槛）
+            // 后端权威校验并计算优惠额（校验归属/未用/上架/时间窗/门槛/店铺归属一致性——A1：
+            // 店铺券仅可核销于本店商品，平台券全站可用）
+            Product couponProduct = productService.findById(pd.getProductId());
+            Long productMerchantId = couponProduct != null ? couponProduct.getMerchantId() : null;
             BigDecimal computed = couponService.validateAndComputeDiscount(
-                    userCouponId, couponOrder.getUserId(), totalOrigin);
+                    userCouponId, couponOrder.getUserId(), totalOrigin, productMerchantId);
             // 前端传入的优惠额须与后端一致，防止伪造
             BigDecimal provided = couponOrder.getDiscountAmount();
             if (provided == null || provided.compareTo(computed) != 0) {

@@ -175,7 +175,7 @@ class CouponServiceImplTest {
         when(userCouponDAO.findById("U1")).thenReturn(uc);
         when(couponDAO.findById("C1")).thenReturn(fullReduction);
         assertEquals(new BigDecimal("20"),
-                couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150")));
+                couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150"), null));
     }
 
     @Test
@@ -184,7 +184,7 @@ class CouponServiceImplTest {
         uc.setUserId(2L);
         when(userCouponDAO.findById("U1")).thenReturn(uc);
         assertThrows(RuntimeException.class,
-                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150")));
+                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150"), null));
     }
 
     @Test
@@ -193,7 +193,7 @@ class CouponServiceImplTest {
         uc.setStatus("USED");
         when(userCouponDAO.findById("U1")).thenReturn(uc);
         assertThrows(RuntimeException.class,
-                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150")));
+                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150"), null));
     }
 
     @Test
@@ -202,7 +202,7 @@ class CouponServiceImplTest {
         when(userCouponDAO.findById("U1")).thenReturn(uc);
         when(couponDAO.findById("C1")).thenReturn(fullReduction);
         assertEquals(BigDecimal.ZERO,
-                couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("50")));
+                couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("50"), null));
     }
 
     // ============ 补充用例（P1 覆盖补强） ============
@@ -348,7 +348,7 @@ class CouponServiceImplTest {
     void validateAndComputeDiscount_notExist_throws() {
         when(userCouponDAO.findById("U1")).thenReturn(null);
         assertThrows(RuntimeException.class,
-                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150")));
+                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150"), null));
     }
 
     @Test
@@ -356,7 +356,7 @@ class CouponServiceImplTest {
         UserCouponDO uc = ucOf(fullReduction);
         when(userCouponDAO.findById("U1")).thenReturn(uc);
         assertThrows(RuntimeException.class,
-                () -> couponService.validateAndComputeDiscount("U1", 99L, new BigDecimal("150")));
+                () -> couponService.validateAndComputeDiscount("U1", 99L, new BigDecimal("150"), null));
     }
 
     @Test
@@ -365,7 +365,7 @@ class CouponServiceImplTest {
         uc.setStatus("USED");
         when(userCouponDAO.findById("U1")).thenReturn(uc);
         assertThrows(RuntimeException.class,
-                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150")));
+                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150"), null));
     }
 
     @Test
@@ -375,7 +375,7 @@ class CouponServiceImplTest {
         when(userCouponDAO.findById("U1")).thenReturn(uc);
         when(couponDAO.findById("C1")).thenReturn(fullReduction);
         assertThrows(RuntimeException.class,
-                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150")));
+                () -> couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150"), null));
     }
 
     @Test
@@ -384,6 +384,6 @@ class CouponServiceImplTest {
         when(userCouponDAO.findById("U1")).thenReturn(uc);
         when(couponDAO.findById("C1")).thenReturn(fullReduction);
         assertEquals(new BigDecimal("20"),
-                couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150")));
+                couponService.validateAndComputeDiscount("U1", 1L, new BigDecimal("150"), null));
     }
 }

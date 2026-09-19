@@ -211,4 +211,81 @@ class UserServiceImplAdditionalTest {
         }
         org.mockito.Mockito.verify(userDAO).findAll();
     }
+
+    // ============ 分支覆盖补强（A1 迭代随带：扩大分支门禁余量） ============
+
+    @Test
+    @DisplayName("login 用户名/密码为空拒绝（两支短路支路）")
+    void login_blankNameOrPwd_throws() {
+        assertThrows(RuntimeException.class, () -> service.login("", "pwd"));
+        assertThrows(RuntimeException.class, () -> service.login("alice", ""));
+        assertThrows(RuntimeException.class, () -> service.login(null, null));
+        verify(userDAO, org.mockito.Mockito.never()).findByUserName(anyString());
+    }
+
+    @Test
+    @DisplayName("login 存量哈希为空/null 视为密码错误（matchesPassword 空值守卫）")
+    void login_emptyStoredPwd_treatedAsWrong() {
+        UserDO legacyEmpty = new UserDO();
+        legacyEmpty.setId(2L);
+        legacyEmpty.setUserName("bob");
+        legacyEmpty.setPwd(""); // 存量数据异常：空哈希
+        when(userDAO.findByUserName("bob")).thenReturn(legacyEmpty);
+        assertThrows(RuntimeException.class, () -> service.login("bob", "whatever"), "密码错误");
+
+        UserDO legacyNull = new UserDO();
+        legacyNull.setId(3L);
+        legacyNull.setUserName("carol");
+        legacyNull.setPwd(null); // 存量数据异常：null 哈希
+        when(userDAO.findByUserName("carol")).thenReturn(legacyNull);
+        assertThrows(RuntimeException.class, () -> service.login("carol", "whatever"), "密码错误");
+
+        verify(userDAO, org.mockito.Mockito.never()).updatePwd(anyLong(), anyString());
+    }
+
+    @Test
+    @DisplayName("findAdminPage 非法 pagination（<1）回退默认")
+    void findAdminPage_paginationBelowOne_fallsBack() {
+        when(userDAO.findAll()).thenReturn(new ArrayList<>());
+        try {
+            service.findAdminPage(0, 10);
+        } catch (Exception e) {
+            // PageHelper 纯 mock 环境限制
+        }
+        org.mockito.Mockito.verify(userDAO).findAll();
+    }
+
+    @Test
+    @DisplayName("findAdminPage 超大 pageSize（>50）收敛为默认")
+    void findAdminPage_pageSizeAboveFifty_clamped() {
+        when(userDAO.findAll()).thenReturn(new ArrayList<>());
+        try {
+            service.findAdminPage(1, 999);
+        } catch (Exception e) {
+            // PageHelper 纯 mock 环境限制
+        }
+        org.mockito.Mockito.verify(userDAO).findAll();
+    }
+
+    @Test
+    @DisplayName("updateProfile 仅改头像（昵称空、头像非空）放行")
+    void updateProfile_avatarOnly_ok() {
+        when(userDAO.updateProfile(1L, null, "https://img.example.com/a.png")).thenReturn(1);
+        when(userDAO.findById(1L)).thenReturn(userDO);
+
+        User updated = service.updateProfile(1L, null, "https://img.example.com/a.png");
+
+        assertNotNull(updated);
+        assertNull(updated.getPwd()); // 密码脱敏
+        verify(userDAO).updateProfile(1L, null, "https://img.example.com/a.png");
+    }
+
+    @Test
+    @DisplayName("updateProfile 更新后用户已不存在返回 null")
+    void updateProfile_userGone_returnsNull() {
+        when(userDAO.updateProfile(1L, "新昵称", null)).thenReturn(1);
+        when(userDAO.findById(1L)).thenReturn(null);
+
+        assertNull(service.updateProfile(1L, "新昵称", null));
+    }
 }

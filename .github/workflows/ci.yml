@@ -110,6 +110,101 @@ jobs:
           name: qinghe-mall-frontend-dist
           path: frontend/dist
 
+  # ============================================================
+  # C1（v1.4）：E2E 关键路径冒烟（Playwright）
+  #   - 前台主链路：注册 → 登录 → 加购 → 下单 → 模拟支付 → 支付成功
+  #   - 管理端冒烟：admin 登录 → 仪表盘
+  #   - 依赖 mysql/redis 服务容器 + 后端 jar（dev profile）+ vite dev（5199 专用端口，
+  #     已在 CSRF 默认白名单，避免与本机其他 5173 应用冲突）
+  # ============================================================
+  e2e:
+    name: E2E smoke (Playwright)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root123
+          MYSQL_DATABASE: qinghedb
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -proot123"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Init database
+        run: |
+          mysql -h 127.0.0.1 -uroot -proot123 --default-character-set=utf8mb4 < backend/index.sql
+
+      - name: Build backend jar
+        working-directory: backend
+        run: mvn -B package -DskipTests
+
+      - name: Start backend (dev profile)
+        working-directory: backend
+        env:
+          DB_PASSWORD: root123
+        run: |
+          java -jar target/qinghe-mall-1.0.0.jar --spring.profiles.active=dev > /tmp/qinghe-backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf "http://localhost:8080/api/product/page?pageNum=1&pageSize=1" > /dev/null; then
+              echo "backend ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "backend failed to start"; tail -100 /tmp/qinghe-backend.log; exit 1
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E smoke
+        working-directory: frontend
+        run: npx playwright test
+
+      - name: Upload E2E artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qinghe-mall-e2e-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 7
+
   # P1-17：后端依赖漏洞扫描（OWASP Dependency-Check，独立 job 避免拖慢主流程）
   backend-security:
     name: Backend dependency security scan
@@ -138,7 +233,7 @@ jobs:
   # ============================================================
   cd:
     name: Build & push Docker images (CD)
-    needs: [backend, frontend]
+    needs: [backend, frontend, e2e]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

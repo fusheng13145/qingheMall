@@ -226,4 +226,55 @@ class CommentServiceImplTest {
         when(commentDAO.countByOrderNumber("O1")).thenReturn(1);
         assertTrue(commentService.hasCommented("O1"));
     }
+
+    // ============ 分支覆盖补强（A1 迭代随带：消除「PageHelper 纯 mock 限制」遗留） ============
+
+    @Test
+    void addComment_shippedOrder_allowed() {
+        OrderDO order = new OrderDO();
+        order.setUserId(1L);
+        // 已发货订单同样可评价（状态三选一分支的 SHIPPED 支路）
+        order.setStatus(OrderStatus.TRADE_SHIPPED.name());
+        order.setProductDetailId("pd001");
+        when(orderDAO.findByOrderNumber("O1")).thenReturn(order);
+        when(commentDAO.countByOrderNumber("O1")).thenReturn(0);
+        when(commentDAO.insert(any(CommentDO.class))).thenReturn(1);
+
+        Comment comment = commentService.addComment(1L, "p1", "O1", 4, "发货快");
+
+        assertEquals(4, comment.getRating());
+    }
+
+    @Test
+    void addComment_orderWithoutDetail_skipsConsistency() {
+        OrderDO order = new OrderDO();
+        order.setUserId(1L);
+        order.setStatus(OrderStatus.TRADE_COMPLETED.name());
+        // 历史订单无规格归属 → 商品一致性校验跳过（isNotBlank false 分支）
+        order.setProductDetailId(null);
+        when(orderDAO.findByOrderNumber("O1")).thenReturn(order);
+        when(commentDAO.countByOrderNumber("O1")).thenReturn(0);
+        when(commentDAO.insert(any(CommentDO.class))).thenReturn(1);
+
+        Comment comment = commentService.addComment(1L, "p1", "O1", 5, "好");
+
+        assertEquals("p1", comment.getProductId());
+    }
+
+    @Test
+    void addComment_detailNotFound_skipsConsistency() {
+        OrderDO order = new OrderDO();
+        order.setUserId(1L);
+        order.setStatus(OrderStatus.TRADE_COMPLETED.name());
+        order.setProductDetailId("pd404");
+        when(orderDAO.findByOrderNumber("O1")).thenReturn(order);
+        // 规格已被删除（查无此明细）→ 一致性校验放行（detail == null 分支）
+        when(productDetailService.findById("pd404")).thenReturn(null);
+        when(commentDAO.countByOrderNumber("O1")).thenReturn(0);
+        when(commentDAO.insert(any(CommentDO.class))).thenReturn(1);
+
+        Comment comment = commentService.addComment(1L, "p1", "O1", 5, "可以");
+
+        assertEquals("p1", comment.getProductId());
+    }
 }

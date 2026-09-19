@@ -185,6 +185,24 @@ class SeckillServiceImplTest {
         verify(stockCounter).set(100);
     }
 
+    @Test
+    @DisplayName("C2 活动预热后注册秒杀水位 Gauge（meterRegistry 就绪时）")
+    void createActivityRegistersStockGauge() {
+        io.micrometer.core.instrument.simple.SimpleMeterRegistry registry =
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        ReflectionTestUtils.setField(service, "meterRegistry", registry);
+        when(productDetailService.findById("pd1")).thenReturn(detail("pd1", 10));
+        when(redissonClient.getAtomicLong(anyString())).thenReturn(stockCounter);
+        when(stockCounter.expire(anyLong(), eq(TimeUnit.MILLISECONDS))).thenReturn(true);
+        when(stockCounter.get()).thenReturn(100L);
+
+        SeckillActivityDO created = service.createActivity(validActivity());
+
+        Double remain = registry.get("qinghe.seckill.stock.remain")
+                .tag("activityId", created.getId()).gauge().value();
+        assertThat(remain).isEqualTo(100.0);
+    }
+
     // ============ list/get/toggle ============
 
     @Test
@@ -324,6 +342,66 @@ class SeckillServiceImplTest {
         verify(seckillOrderDAO).insert(any(SeckillOrderDO.class));
         verify(orderTimeoutQueue).offer(no);
         verify(userLock).unlock();
+    }
+
+    @Test
+    @DisplayName("A1 商家秒杀活动绑定他店商品：核销拒绝并补偿 Redis 预扣")
+    void createOrderCrossShopMerchantActivityRejected() throws InterruptedException {
+        SeckillActivityDO a = validActivity();
+        a.setMerchantId(5L); // 商家活动
+        when(activityDAO.findById("act1")).thenReturn(a);
+        when(redissonClient.getAtomicLong("seckill:stock:act1")).thenReturn(stockCounter);
+        when(stockCounter.isExists()).thenReturn(true);
+        when(stockCounter.getAndDecrement()).thenReturn(99L);
+        when(redissonClient.getLock(anyString())).thenReturn(userLock);
+        when(userLock.tryLock(2, 5, TimeUnit.SECONDS)).thenReturn(true);
+        when(userLock.isHeldByCurrentThread()).thenReturn(true);
+        mockTransactionDirect();
+        when(activityDAO.decreaseRemainStock("act1", 1)).thenReturn(1);
+        when(productDetailService.findById("pd1")).thenReturn(detail("pd1", 50));
+        when(productDetailService.decreaseStock("pd1", 1)).thenReturn(true);
+        // 商品归属他店（9 ≠ 5）
+        Product otherShopProduct = new Product();
+        otherShopProduct.setMerchantId(9L);
+        when(productService.findById("p1")).thenReturn(otherShopProduct);
+        // generateOrderNumber 在归属校验前执行，须 stub 订单序列号
+        when(redissonClient.getAtomicLong("seckill:order:seq")).thenReturn(stockCounter);
+        when(stockCounter.incrementAndGet()).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.createOrder("act1", 1L, 1, "n", "p", "a"))
+                .isInstanceOf(RuntimeException.class).hasMessageContaining("仅限本店商品");
+
+        // 事务内拒绝 → 未落订单；incrementAndGet 共 2 次（订单序列号 1 + 失败补偿回滚 Redis 预扣 1）
+        verify(orderDAO, never()).insert(any(com.qinghe.mall.dataobject.OrderDO.class));
+        verify(stockCounter, times(2)).incrementAndGet();
+    }
+
+    @Test
+    @DisplayName("A1 商家秒杀活动绑定本店商品：放行")
+    void createOrderSameShopMerchantActivityPasses() throws Exception {
+        SeckillActivityDO a = validActivity();
+        a.setMerchantId(5L);
+        when(activityDAO.findById("act1")).thenReturn(a);
+        when(redissonClient.getAtomicLong("seckill:stock:act1")).thenReturn(stockCounter);
+        when(stockCounter.isExists()).thenReturn(true);
+        when(stockCounter.getAndDecrement()).thenReturn(99L);
+        when(redissonClient.getLock(anyString())).thenReturn(userLock);
+        when(userLock.tryLock(2, 5, TimeUnit.SECONDS)).thenReturn(true);
+        when(userLock.isHeldByCurrentThread()).thenReturn(true);
+        mockTransactionDirect();
+        when(activityDAO.decreaseRemainStock("act1", 2)).thenReturn(1);
+        when(productDetailService.findById("pd1")).thenReturn(detail("pd1", 50));
+        when(productDetailService.decreaseStock("pd1", 2)).thenReturn(true);
+        Product ownShopProduct = new Product();
+        ownShopProduct.setMerchantId(5L);
+        when(productService.findById("p1")).thenReturn(ownShopProduct);
+        when(redissonClient.getAtomicLong("seckill:order:seq")).thenReturn(stockCounter);
+        when(stockCounter.incrementAndGet()).thenReturn(1L);
+
+        String no = service.createOrder("act1", 1L, 2, "张三", "13800000000", "北京");
+
+        assertThat(no).startsWith("QH");
+        verify(orderDAO).insert(any(com.qinghe.mall.dataobject.OrderDO.class));
     }
 
     @Test

@@ -20,6 +20,8 @@ import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.redisson.api.RAtomicLong;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -83,6 +85,13 @@ public class SeckillServiceImpl implements SeckillService {
     @Autowired
     @Lazy
     private OrderTimeoutQueue orderTimeoutQueue;
+
+    /** 秒杀水位指标（C2 告警）：可选注入，纯 mock 单测环境为 null 时跳过注册 */
+    @Autowired(required = false)
+    private MeterRegistry meterRegistry;
+
+    /** 秒杀 Redis 闸门水位 Gauge（Prometheus：qinghe_seckill_stock_remain，tag activityId） */
+    private static final String METRIC_SECKILL_STOCK_REMAIN = "qinghe.seckill.stock.remain";
 
     /** 平台/商家活动通用校验（#39：提取复用）；返回绑定的 SKU 明细供归属校验 */
     private ProductDetail validateActivity(SeckillActivityDO activity) {
@@ -344,6 +353,11 @@ public class SeckillServiceImpl implements SeckillService {
                         com.qinghe.mall.model.Product product = productService.findById(before.getProductId());
                         merchantId = product != null ? product.getMerchantId() : null;
                     }
+                    // A1：秒杀归属一致性——商家活动仅可作用于本店商品（平台活动 merchant_id=NULL 不限）。
+                    // 异常归属数据（如活动被改绑他店商品）在此拒绝；抛错走事务回滚 + Redis 预扣补偿
+                    if (activity.getMerchantId() != null && !activity.getMerchantId().equals(merchantId)) {
+                        throw new BusinessException("商家秒杀活动仅限本店商品");
+                    }
                     orderDO.setMerchantId(merchantId);
                     orderDO.setProductDetailId(activity.getProductDetailId());
                     orderDO.setQuantity(qty);
@@ -437,8 +451,34 @@ public class SeckillServiceImpl implements SeckillService {
             stock.set(remainStock);
             long ttlMs = endTime.getTime() - System.currentTimeMillis() + CACHE_EXTRA_TTL_MS;
             stock.expire(ttlMs > 0 ? ttlMs : CACHE_EXTRA_TTL_MS, TimeUnit.MILLISECONDS);
+            registerStockGauge(activityId);
         } catch (Exception e) {
             log.warn("秒杀库存预热失败 activityId={}, reason={}", activityId, e.getMessage());
+        }
+    }
+
+    /**
+     * C2：注册秒杀 Redis 闸门水位 Gauge（每次抓取实时读 Redis）。
+     * 重复预热不重复注册（同 id 幂等返回既有 Gauge）；读数失败返回 NaN，抓取侧自动跳过。
+     */
+    private void registerStockGauge(String activityId) {
+        if (meterRegistry == null) {
+            return;
+        }
+        try {
+            Gauge.builder(METRIC_SECKILL_STOCK_REMAIN,
+                            () -> {
+                                try {
+                                    return redissonClient.getAtomicLong(STOCK_KEY_PREFIX + activityId).get();
+                                } catch (Exception e) {
+                                    return Double.NaN;
+                                }
+                            })
+                    .tag("activityId", activityId)
+                    .description("Seckill Redis gate remain stock (watermark)")
+                    .register(meterRegistry);
+        } catch (Exception e) {
+            log.debug("秒杀水位 Gauge 注册跳过 activityId={}, reason={}", activityId, e.getMessage());
         }
     }
 

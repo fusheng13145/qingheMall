@@ -1,0 +1,20 @@
+# ============================================================
+# Grafana 统一告警——通知策略（C2，v1.4）
+# 由 docker-compose 挂载到 /etc/grafana/provisioning/alerting
+#
+# 将 qinghe-mall-logs 组的告警路由至 qinghe-ops-webhook 联系点；
+# 与 Alertmanager 的分级路由互补（指标类 → Alertmanager，日志类 → Grafana）。
+# ============================================================
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver:
+      one_of:
+        - qinghe-ops-webhook
+    group_by:
+      - grafana_folder
+      - alertname
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
