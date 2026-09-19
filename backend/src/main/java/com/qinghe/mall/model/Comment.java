@@ -16,6 +16,14 @@ public class Comment {
     /** 展示冗余：评价人昵称（不落库，Service 填充） */
     private String userNickName;
 
+    /** 展示冗余：商家回复（A4，不落库，Service 填充） */
+    private String replyContent;
+    private Date replyTime;
+    private String merchantName;
+
+    /** 展示冗余：商品名（商家端评价列表，JOIN product 填充） */
+    private String productName;
+
     public String getId() {
         return id;
     }
@@ -86,5 +94,37 @@ public class Comment {
 
     public void setUserNickName(String userNickName) {
         this.userNickName = userNickName;
+    }
+
+    public String getReplyContent() {
+        return replyContent;
+    }
+
+    public void setReplyContent(String replyContent) {
+        this.replyContent = replyContent;
+    }
+
+    public Date getReplyTime() {
+        return replyTime;
+    }
+
+    public void setReplyTime(Date replyTime) {
+        this.replyTime = replyTime;
+    }
+
+    public String getMerchantName() {
+        return merchantName;
+    }
+
+    public void setMerchantName(String merchantName) {
+        this.merchantName = merchantName;
+    }
+
+    public String getProductName() {
+        return productName;
+    }
+
+    public void setProductName(String productName) {
+        this.productName = productName;
     }
 }

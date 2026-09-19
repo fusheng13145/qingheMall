@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.SettlementBillDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.SettlementBillDO">
+        <id column="id" property="id" jdbcType="VARCHAR"/>
+        <result column="merchant_id" property="merchantId" jdbcType="BIGINT"/>
+        <result column="total_gross" property="totalGross" jdbcType="DECIMAL"/>
+        <result column="total_commission" property="totalCommission" jdbcType="DECIMAL"/>
+        <result column="total_net" property="totalNet" jdbcType="DECIMAL"/>
+        <result column="entry_count" property="entryCount" jdbcType="INTEGER"/>
+        <result column="status" property="status" jdbcType="VARCHAR"/>
+        <result column="review_note" property="reviewNote" jdbcType="VARCHAR"/>
+        <result column="reviewer_id" property="reviewerId" jdbcType="BIGINT"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+        <result column="gmt_reviewed" property="gmtReviewed" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, merchant_id, total_gross, total_commission, total_net, entry_count, status,
+        review_note, reviewer_id, gmt_created, gmt_reviewed
+    </sql>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.SettlementBillDO">
+        INSERT INTO settlement_bill (id, merchant_id, total_gross, total_commission, total_net,
+                                     entry_count, status, review_note, reviewer_id, gmt_created, gmt_reviewed)
+        VALUES (#{id}, #{merchantId}, #{totalGross}, #{totalCommission}, #{totalNet},
+                #{entryCount}, #{status}, #{reviewNote}, #{reviewerId}, #{gmtCreated}, #{gmtReviewed})
+    </insert>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM settlement_bill
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByMerchant" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM settlement_bill
+        WHERE merchant_id = #{merchantId}
+        ORDER BY gmt_created DESC
+    </select>
+
+    <select id="findPage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM settlement_bill
+        <where>
+            <if test="status != null and status != ''">
+                status = #{status}
+            </if>
+        </where>
+        ORDER BY gmt_created DESC
+    </select>
+
+    <select id="sumPaidByMerchant" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(total_net), 0) FROM settlement_bill
+        WHERE merchant_id = #{merchantId} AND status = 'PAID'
+    </select>
+
+    <update id="updateReview">
+        UPDATE settlement_bill
+        SET status = #{status},
+            review_note = #{reviewNote},
+            reviewer_id = #{reviewerId},
+            gmt_reviewed = NOW()
+        WHERE id = #{id} AND status = 'PENDING'
+    </update>
+</mapper>

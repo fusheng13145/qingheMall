@@ -55,6 +55,9 @@ class RefundServiceImplTest {
     @Mock
     private CouponService couponService;
 
+    @Mock
+    private com.qinghe.mall.service.SettlementService settlementService;
+
     @InjectMocks
     private RefundServiceImpl refundService;
 

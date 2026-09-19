@@ -49,6 +49,9 @@ public class MerchantController {
     @Autowired
     private MerchantAuthService merchantAuthService;
 
+    @Autowired
+    private com.qinghe.mall.service.CommentService commentService;
+
     /** 店铺信息与入驻状态（无需 ACTIVE，供前端展示审核中/驳回原因） */
     @GetMapping("/info")
     public Result<MerchantDO> info(HttpServletRequest request) {
@@ -215,6 +218,28 @@ public class MerchantController {
     public Result<java.util.Map<String, Object>> stats(HttpServletRequest request) {
         MerchantDO merchant = merchantAuthService.checkMerchant(request);
         return Result.success(orderService.merchantStats(merchant.getId()));
+    }
+
+    // ========== 评价管理（A4，v1.5） ==========
+
+    /** 本店商品的评价分页（含商品名与商家回复状态） */
+    @GetMapping("/comments")
+    public Result<Paging<com.qinghe.mall.model.Comment>> listComments(
+            @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
+            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize,
+            HttpServletRequest request) {
+        MerchantDO merchant = merchantAuthService.checkMerchant(request);
+        return Result.success(commentService.listByMerchant(merchant.getId(), pageNum, pageSize));
+    }
+
+    /** 商家回复评价：仅本店商品的评价可回复，一对一（防重复） */
+    @PostMapping("/comments/reply")
+    public Result<Void> replyComment(@RequestParam("commentId") String commentId,
+                                     @RequestParam("content") String content,
+                                     HttpServletRequest request) {
+        MerchantDO merchant = merchantAuthService.checkMerchant(request);
+        commentService.merchantReply(merchant.getId(), commentId, content);
+        return Result.success();
     }
 
     /** 商家订单归属校验（P2-18）：订单必须存在且属于本店，否则拒绝操作 */

@@ -8,7 +8,7 @@ const ctx = vi.hoisted(() => ({ user: null }))
 
 vi.mock('../../stores/user', () => ({ useUserStore: () => ctx.user }))
 
-const NAV_ITEMS = ['店铺概览', '商品管理', '订单管理', '营销管理']
+const NAV_ITEMS = ['店铺概览', '商品管理', '订单管理', '营销管理', '结算中心', '评价管理']
 
 function mountLayout(routeName = 'MerchantOverview') {
   return mount(MerchantLayout, {

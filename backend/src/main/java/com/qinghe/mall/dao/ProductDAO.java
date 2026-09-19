@@ -43,4 +43,7 @@ public interface ProductDAO {
      * 累加销量（支付成功时调用）。
      */
     int increasePurchaseNum(@Param("id") String id, @Param("num") Integer num);
+
+    /** 店铺主页：本店在售商品销量合计（A3，v1.5） */
+    long sumSalesByMerchant(@Param("merchantId") Long merchantId);
 }

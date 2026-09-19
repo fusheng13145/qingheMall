@@ -77,6 +77,9 @@ class OrderServiceImplCoverageTest {
     @Mock
     private RLock lock;
 
+    @Mock
+    private com.qinghe.mall.service.SettlementService settlementService;
+
     @InjectMocks
     private OrderServiceImpl orderService;
 

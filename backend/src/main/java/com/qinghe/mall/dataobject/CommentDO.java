@@ -14,6 +14,9 @@ public class CommentDO {
     private Date gmtCreated;
     private Date gmtModified;
 
+    /** 查询冗余：商品名（findByMerchant JOIN product，不落库） */
+    private String productName;
+
     public String getId() {
         return id;
     }
@@ -78,6 +81,14 @@ public class CommentDO {
         this.gmtModified = gmtModified;
     }
 
+    public String getProductName() {
+        return productName;
+    }
+
+    public void setProductName(String productName) {
+        this.productName = productName;
+    }
+
     public Comment convertToModel() {
         Comment comment = new Comment();
         comment.setId(this.id);
@@ -88,6 +99,7 @@ public class CommentDO {
         comment.setContent(this.content);
         comment.setGmtCreated(this.gmtCreated);
         comment.setGmtModified(this.gmtModified);
+        comment.setProductName(this.productName);
         return comment;
     }
 }

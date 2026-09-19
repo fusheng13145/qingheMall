@@ -115,3 +115,15 @@ export function listMerchantSeckills(status = '', pageNum = 1, pageSize = 50) {
 export function toggleMerchantSeckill(activityId, status) {
   return request.post('/merchant/marketing/seckill/toggle', null, { params: { activityId, status } })
 }
+
+// ===================== 评价管理（A4，v1.5） =====================
+
+// 本店商品的评价分页（含商品名与商家回复状态）：GET /api/merchant/comments
+export function listMerchantComments(pageNum = 1, pageSize = 10) {
+  return request.get('/merchant/comments', { params: { pageNum, pageSize } })
+}
+
+// 商家回复评价（一对一，重复回复拒绝）：POST /api/merchant/comments/reply
+export function replyMerchantComment(commentId, content) {
+  return request.post('/merchant/comments/reply', null, { params: { commentId, content } })
+}

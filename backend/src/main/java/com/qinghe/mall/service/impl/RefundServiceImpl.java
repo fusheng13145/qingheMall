@@ -53,6 +53,9 @@ public class RefundServiceImpl implements RefundService {
     private CouponService couponService;
 
     @Autowired
+    private com.qinghe.mall.service.SettlementService settlementService;
+
+    @Autowired
     private TransactionTemplate transactionTemplate;
 
     @Override
@@ -213,7 +216,7 @@ public class RefundServiceImpl implements RefundService {
 
     /**
      * 审核通过的收尾（须在事务内调用）：
-     * 订单 退款中→已退款（CAS） + 库存回补 + 流水留痕 + 释放优惠券。
+     * 订单 退款中→已退款（CAS） + 库存回补 + 流水留痕 + 释放优惠券 + 分账冲销（A2）。
      */
     private void finishRefundApproved(OrderDO order) {
         int updated = orderDAO.updateStatusWithGuard(
@@ -227,6 +230,8 @@ public class RefundServiceImpl implements RefundService {
         if (StringUtils.isNotBlank(order.getCouponId())) {
             couponService.releaseCoupon(order.getCouponId());
         }
+        // A2：若该订单已确认收货分账（EARN 存在），退款通过即冲销商家货款（幂等；未分账订单自动跳过）
+        settlementService.recordReversal(order);
     }
 
     /**

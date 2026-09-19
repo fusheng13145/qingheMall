@@ -30,6 +30,18 @@
         </svg>
         <span>营销管理</span>
       </router-link>
+      <router-link to="/merchant/settlement" class="nav-item" :class="{ active: $route.name === 'MerchantSettlement' }" @click="onNavClick">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+        <span>结算中心</span>
+      </router-link>
+      <router-link to="/merchant/comments" class="nav-item" :class="{ active: $route.name === 'MerchantComments' }" @click="onNavClick">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span>评价管理</span>
+      </router-link>
     </ConsoleSidebar>
 
     <!-- 主内容区 -->

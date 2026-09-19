@@ -68,6 +68,12 @@ const routes = [
     component: () => import('../views/Profile.vue'),
     meta: { requiresAuth: true }
   },
+  // A3 店铺主页（公开，仅 ACTIVE 商家可展示）
+  {
+    path: '/shop/:merchantId',
+    name: 'Shop',
+    component: () => import('../views/Shop.vue')
+  },
   {
     path: '/pay-success',
     name: 'PaySuccess',
@@ -91,7 +97,8 @@ const routes = [
       { path: 'coupons', name: 'AdminCoupons', component: () => import('../views/admin/Coupons.vue') },
       { path: 'seckills', name: 'AdminSeckills', component: () => import('../views/admin/Seckill.vue') },
       { path: 'merchants', name: 'AdminMerchants', component: () => import('../views/admin/Merchants.vue') },
-      { path: 'users', name: 'AdminUsers', component: () => import('../views/admin/Users.vue') }
+      { path: 'users', name: 'AdminUsers', component: () => import('../views/admin/Users.vue') },
+      { path: 'settlement', name: 'AdminSettlement', component: () => import('../views/admin/Settlement.vue') }
     ]
   },
   {
@@ -103,7 +110,9 @@ const routes = [
       { path: '', name: 'MerchantOverview', component: () => import('../views/merchant/Overview.vue') },
       { path: 'products', name: 'MerchantProducts', component: () => import('../views/merchant/Products.vue') },
       { path: 'orders', name: 'MerchantOrders', component: () => import('../views/merchant/Orders.vue') },
-      { path: 'marketing', name: 'MerchantMarketing', component: () => import('../views/merchant/Marketing.vue') }
+      { path: 'marketing', name: 'MerchantMarketing', component: () => import('../views/merchant/Marketing.vue') },
+      { path: 'settlement', name: 'MerchantSettlement', component: () => import('../views/merchant/Settlement.vue') },
+      { path: 'comments', name: 'MerchantComments', component: () => import('../views/merchant/Comments.vue') }
     ]
   },
   // P2-14：未知路由兜底 404 页面（必须置于路由表末尾）

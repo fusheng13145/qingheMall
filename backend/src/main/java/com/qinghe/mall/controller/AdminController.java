@@ -22,6 +22,7 @@ public class AdminController {
     @Autowired private com.qinghe.mall.service.MerchantService merchantService;
     @Autowired private com.qinghe.mall.service.LogisticsService logisticsService;
     @Autowired private com.qinghe.mall.service.RefundService refundService;
+    @Autowired private com.qinghe.mall.service.SettlementService settlementService;
 
     // 检查管理员权限的私有方法
     private boolean checkAdmin(HttpServletRequest request) {
@@ -313,5 +314,57 @@ public class AdminController {
         }
         userService.updateRole(id, role);
         return Result.success();
+    }
+
+    // ========== 商家结算分账（A2，v1.5） ==========
+
+    /** 为商家生成结算单（汇总全部未结算 EARN 流水） */
+    @PostMapping("/settlement/generate")
+    public Result<com.qinghe.mall.dataobject.SettlementBillDO> generateSettlementBill(
+            @RequestParam("merchantId") Long merchantId,
+            HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        Long operatorId = (Long) request.getSession().getAttribute("userId");
+        return Result.success(settlementService.generateBill(merchantId, operatorId));
+    }
+
+    /** 结算单分页（可按状态过滤：PENDING/PAID/REJECTED） */
+    @GetMapping("/settlement/list")
+    public Result<Paging<com.qinghe.mall.dataobject.SettlementBillDO>> listSettlementBills(
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
+            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize,
+            HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(settlementService.adminBills(status, pageNum, pageSize));
+    }
+
+    /** 审核结算单：approve=true 放款 PAID；false 驳回 REJECTED 并退回流水 */
+    @PostMapping("/settlement/review")
+    public Result<Void> reviewSettlementBill(@RequestParam("billId") String billId,
+                                             @RequestParam("approve") boolean approve,
+                                             @RequestParam(value = "note", required = false) String note,
+                                             HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        Long operatorId = (Long) request.getSession().getAttribute("userId");
+        settlementService.reviewBill(billId, approve, note, operatorId);
+        return Result.success();
+    }
+
+    /** 结算单包含的流水明细 */
+    @GetMapping("/settlement/entries")
+    public Result<java.util.List<com.qinghe.mall.dataobject.SettlementLedgerDO>> settlementEntries(
+            @RequestParam("billId") String billId,
+            HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(settlementService.billEntries(billId));
     }
 }

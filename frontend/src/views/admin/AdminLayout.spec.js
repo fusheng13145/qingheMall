@@ -8,7 +8,7 @@ const ctx = vi.hoisted(() => ({ user: null }))
 
 vi.mock('../../stores/user', () => ({ useUserStore: () => ctx.user }))
 
-const NAV_ITEMS = ['仪表盘', '商品管理', '订单管理', '用户管理', '商家审核', '秒杀管理']
+const NAV_ITEMS = ['仪表盘', '商品管理', '订单管理', '用户管理', '商家审核', '秒杀管理', '结算管理']
 
 function mountLayout(routeName = 'AdminDashboard') {
   return mount(AdminLayout, {

@@ -128,4 +128,10 @@
         WHERE id = #{id}
     </update>
 
+    <!-- 店铺主页：本店在售商品销量合计（A3） -->
+    <select id="sumSalesByMerchant" resultType="long">
+        SELECT COALESCE(SUM(purchase_num), 0) FROM product
+        WHERE merchant_id = #{merchantId} AND status = 'ON'
+    </select>
+
 </mapper>

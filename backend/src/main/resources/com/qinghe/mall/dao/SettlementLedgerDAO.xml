@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.SettlementLedgerDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.SettlementLedgerDO">
+        <id column="id" property="id" jdbcType="VARCHAR"/>
+        <result column="order_number" property="orderNumber" jdbcType="VARCHAR"/>
+        <result column="merchant_id" property="merchantId" jdbcType="BIGINT"/>
+        <result column="type" property="type" jdbcType="VARCHAR"/>
+        <result column="gross" property="gross" jdbcType="DECIMAL"/>
+        <result column="commission_rate" property="commissionRate" jdbcType="DECIMAL"/>
+        <result column="commission" property="commission" jdbcType="DECIMAL"/>
+        <result column="net" property="net" jdbcType="DECIMAL"/>
+        <result column="bill_id" property="billId" jdbcType="VARCHAR"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, order_number, merchant_id, type, gross, commission_rate, commission, net, bill_id, gmt_created
+    </sql>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.SettlementLedgerDO">
+        INSERT INTO settlement_ledger (id, order_number, merchant_id, type, gross, commission_rate,
+                                       commission, net, bill_id, gmt_created)
+        VALUES (#{id}, #{orderNumber}, #{merchantId}, #{type}, #{gross}, #{commissionRate},
+                #{commission}, #{net}, #{billId}, #{gmtCreated})
+    </insert>
+
+    <select id="findByOrderNumberAndType" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM settlement_ledger
+        WHERE order_number = #{orderNumber} AND type = #{type}
+    </select>
+
+    <select id="findUnbilledEarn" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM settlement_ledger
+        WHERE merchant_id = #{merchantId} AND type = 'EARN' AND bill_id IS NULL
+        ORDER BY gmt_created
+    </select>
+
+    <select id="findByMerchant" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM settlement_ledger
+        WHERE merchant_id = #{merchantId}
+        ORDER BY gmt_created DESC
+    </select>
+
+    <select id="sumNetByMerchant" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(net), 0) FROM settlement_ledger WHERE merchant_id = #{merchantId}
+    </select>
+
+    <select id="sumCommissionByMerchant" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(commission), 0) FROM settlement_ledger WHERE merchant_id = #{merchantId}
+    </select>
+
+    <update id="markBilled">
+        UPDATE settlement_ledger
+        SET bill_id = #{billId}
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+    <select id="findByBillId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM settlement_ledger
+        WHERE bill_id = #{billId}
+    </select>
+</mapper>

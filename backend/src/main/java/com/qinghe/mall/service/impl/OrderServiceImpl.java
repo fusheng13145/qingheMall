@@ -97,6 +97,9 @@ public class OrderServiceImpl implements OrderService {
     private com.qinghe.mall.service.CouponService couponService;
 
     @Autowired
+    private com.qinghe.mall.service.SettlementService settlementService;
+
+    @Autowired
     @org.springframework.context.annotation.Lazy
     private com.qinghe.mall.service.SeckillService seckillService;
 
@@ -342,6 +345,9 @@ public class OrderServiceImpl implements OrderService {
             if (updated <= 0) {
                 throw new BusinessException("订单状态异常，无法确认收货（仅已发货订单可确认）");
             }
+            // A2：确认收货即商家货款分账（EARN，幂等；平台自营 merchant_id 为空自动跳过）
+            OrderDO completed = orderDAO.findByOrderNumber(orderNumber);
+            settlementService.recordEarning(completed);
             return true;
         }));
     }

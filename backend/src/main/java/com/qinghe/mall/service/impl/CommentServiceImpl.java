@@ -4,8 +4,10 @@ import com.qinghe.mall.exception.BusinessException;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import com.qinghe.mall.dao.CommentDAO;
+import com.qinghe.mall.dao.CommentReplyDAO;
 import com.qinghe.mall.dao.OrderDAO;
 import com.qinghe.mall.dataobject.CommentDO;
+import com.qinghe.mall.dataobject.CommentReplyDO;
 import com.qinghe.mall.dataobject.OrderDO;
 import com.qinghe.mall.model.Comment;
 import com.qinghe.mall.model.OrderStatus;
@@ -39,6 +41,12 @@ public class CommentServiceImpl implements CommentService {
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private com.qinghe.mall.service.ProductService productService;
+
+    @Autowired
+    private CommentReplyDAO commentReplyDAO;
 
     @Override
     public Comment addComment(Long userId, String productId, String orderNumber, Integer rating, String content) {
@@ -114,9 +122,11 @@ public class CommentServiceImpl implements CommentService {
 
         List<Comment> comments = new ArrayList<>();
         List<Long> userIds = new ArrayList<>();
+        List<String> commentIds = new ArrayList<>();
         for (CommentDO commentDO : page.getResult()) {
             Comment comment = commentDO.convertToModel();
             comments.add(comment);
+            commentIds.add(comment.getId());
             if (comment.getUserId() != null) {
                 userIds.add(comment.getUserId());
             }
@@ -135,6 +145,8 @@ public class CommentServiceImpl implements CommentService {
                 }
             }
         }
+        // A4：批量填充商家回复（一次 IN 查询，消除 N+1）
+        fillReplies(comments, commentIds);
         paging.setData(comments);
         return paging;
     }
@@ -155,5 +167,98 @@ public class CommentServiceImpl implements CommentService {
             return false;
         }
         return commentDAO.countByOrderNumber(orderNumber) > 0;
+    }
+
+    // ===================== A4：商家评价回复（v1.5） =====================
+
+    @Override
+    public void merchantReply(Long merchantId, String commentId, String content) {
+        if (merchantId == null) {
+            throw new BusinessException("商家身份缺失");
+        }
+        if (StringUtils.isBlank(commentId)) {
+            throw new BusinessException("评价ID不能为空");
+        }
+        String trimmed = StringUtils.isBlank(content) ? "" : content.trim();
+        if (trimmed.isEmpty()) {
+            throw new BusinessException("回复内容不能为空");
+        }
+        if (trimmed.length() > 200) {
+            throw new BusinessException("回复内容不能超过 200 字");
+        }
+        CommentDO comment = commentDAO.findById(commentId);
+        if (comment == null) {
+            throw new BusinessException("评价不存在");
+        }
+        // 归属校验：仅本店商品的评价可回复（防跨店水平越权）
+        com.qinghe.mall.model.Product product = productService.findById(comment.getProductId());
+        if (product == null || product.getMerchantId() == null
+                || !merchantId.equals(product.getMerchantId())) {
+            throw new BusinessException("仅可回复本店商品的评价");
+        }
+        // 防重复回复（uk_comment_id 兜底）
+        if (commentReplyDAO.findByCommentId(commentId) != null) {
+            throw new BusinessException("该评价已回复");
+        }
+        CommentReplyDO reply = new CommentReplyDO();
+        reply.setId(UUIDUtils.uuid());
+        reply.setCommentId(commentId);
+        reply.setMerchantId(merchantId);
+        reply.setContent(trimmed);
+        reply.setGmtCreated(new Date());
+        commentReplyDAO.insert(reply);
+    }
+
+    @Override
+    public Paging<Comment> listByMerchant(Long merchantId, int pageNum, int pageSize) {
+        if (merchantId == null) {
+            throw new BusinessException("商家身份缺失");
+        }
+        int pn = pageNum < 1 ? 1 : pageNum;
+        int ps = (pageSize < 1 || pageSize > 50) ? 10 : pageSize;
+        Page<CommentDO> page = PageHelper.startPage(pn, ps)
+                .doSelectPage(() -> commentDAO.findByMerchant(merchantId));
+
+        Paging<Comment> paging = new Paging<>();
+        paging.setPageNum(pn);
+        paging.setPageSize(ps);
+        paging.setTotalPage(page.getPages());
+        paging.setTotalCount(page.getTotal());
+
+        List<Comment> comments = new ArrayList<>();
+        List<String> commentIds = new ArrayList<>();
+        for (CommentDO commentDO : page.getResult()) {
+            comments.add(commentDO.convertToModel());
+            commentIds.add(commentDO.getId());
+        }
+        fillReplies(comments, commentIds);
+        paging.setData(comments);
+        return paging;
+    }
+
+    /** 批量填充商家回复（commentIds 与 comments 一一对应） */
+    void fillReplies(List<Comment> comments, List<String> commentIds) {
+        if (comments.isEmpty() || commentIds.isEmpty()) {
+            return;
+        }
+        applyReplies(comments, commentReplyDAO.findByCommentIds(commentIds));
+    }
+
+    /** 包可见：回复填充核心逻辑（可直测，绕开 PageHelper 纯 mock 限制） */
+    static void applyReplies(List<Comment> comments, List<CommentReplyDO> replies) {
+        if (comments.isEmpty() || replies == null || replies.isEmpty()) {
+            return;
+        }
+        Map<String, CommentReplyDO> replyMap = new HashMap<>();
+        for (CommentReplyDO reply : replies) {
+            replyMap.put(reply.getCommentId(), reply);
+        }
+        for (Comment comment : comments) {
+            CommentReplyDO reply = replyMap.get(comment.getId());
+            if (reply != null) {
+                comment.setReplyContent(reply.getContent());
+                comment.setReplyTime(reply.getGmtCreated());
+            }
+        }
     }
 }

@@ -25,6 +25,13 @@
         ORDER BY gmt_created DESC
     </select>
 
+    <!-- A4：按主键查评价（商家回复归属校验用） -->
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT id, user_id, product_id, order_number, rating, content, gmt_created, gmt_modified
+        FROM `comment`
+        WHERE id = #{commentId}
+    </select>
+
     <select id="countByProductId" resultType="long">
         SELECT COUNT(*) FROM `comment` WHERE product_id = #{productId}
     </select>
@@ -48,5 +55,23 @@
     <delete id="deleteByProductIdForTest">
         DELETE FROM `comment` WHERE product_id = #{productId}
     </delete>
+
+    <!-- A4：本店商品的评价（JOIN product 带商品名，商家端评价管理） -->
+    <select id="findByMerchant" resultMap="BaseResultMap">
+        SELECT c.id, c.user_id, c.product_id, c.order_number, c.rating, c.content,
+               c.gmt_created, c.gmt_modified
+        FROM `comment` c
+        INNER JOIN product p ON c.product_id = p.id
+        WHERE p.merchant_id = #{merchantId}
+        ORDER BY c.gmt_created DESC
+    </select>
+
+    <!-- A3：店铺主页——本店商品评分均值 -->
+    <select id="avgRatingByMerchant" resultType="java.lang.Double">
+        SELECT AVG(c.rating)
+        FROM `comment` c
+        INNER JOIN product p ON c.product_id = p.id
+        WHERE p.merchant_id = #{merchantId}
+    </select>
 
 </mapper>
