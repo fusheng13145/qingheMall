@@ -22,6 +22,8 @@ deploy/ssl/*
 # ============ 后端构建产物与运行时目录 ============
 backend/target/
 backend/upload/
+# 根级运行时残留：后端曾以仓库根为工作目录启动时生成的 upload/（与 backend/upload/ 同性质，不入库）
+/upload/
 *.class
 *.jar
 *.war
@@ -53,3 +55,7 @@ perf/r_*.html
 # 写链路产物（#23/#36 验收，同样为可重生输出，禁止入库）
 perf/w_*.csv
 perf/w_*.html
+
+# ============ Playwright e2e 产物（不入库） ============
+frontend/test-results/
+frontend/playwright-report/
