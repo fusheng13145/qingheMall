@@ -1232,4 +1232,24 @@ onMounted(() => {
 .refund-item .detail-row {
   margin-bottom: 6px;
 }
+
+/* ========== D1（v1.6）移动端适配：弹窗 sheet 化 ========== */
+@media (max-width: 640px) {
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .modal {
+    max-width: 100%;
+    max-height: 88vh;
+    overflow-y: auto;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+  .modal-header,
+  .modal-body,
+  .modal-actions {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
 </style>

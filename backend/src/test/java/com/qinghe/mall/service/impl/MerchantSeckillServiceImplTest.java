@@ -45,6 +45,9 @@ class MerchantSeckillServiceImplTest {
     @Mock
     private RAtomicLong stockCounter;
 
+    @Mock
+    private com.qinghe.mall.config.SnowflakeIdGenerator snowflakeIdGenerator;
+
     @InjectMocks
     private SeckillServiceImpl seckillService;
 

@@ -193,3 +193,17 @@
 [data-skin="admin"] .data-table th { text-transform: none; letter-spacing: 0.3px; }
 [data-skin="admin"] .data-table .mono { font-family: var(--font-mono); font-size: 12px; }
 [data-skin="admin"] .data-table .status-badge { padding: 2px 8px; font-size: 11px; border-radius: 4px; }
+
+/* ============================================================
+   D1（v1.6）移动端长流程规范令牌
+   弹窗（modal-overlay/modal）在 ≤640px 统一「底部 sheet」形态：
+   align-items: flex-end + 顶部圆角 + 88vh 限高内滚；
+   控制台表格（data-table）统一 display:block + 横向滚动。
+   各页面 scoped 实现须与此口径一致（用户端 Orders / 商家端 Orders
+   三弹窗、admin·merchant 表格均已接入）。
+   ============================================================ */
+:root {
+  --sheet-breakpoint: 640px;
+  --sheet-max-height: 88vh;
+  --sheet-radius-top: var(--radius-lg, 14px);
+}

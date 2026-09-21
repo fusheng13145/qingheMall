@@ -72,6 +72,9 @@ class OrderServiceImplTest {
     @Mock
     private com.qinghe.mall.service.SettlementService settlementService;
 
+    @Mock
+    private com.qinghe.mall.config.SnowflakeIdGenerator snowflakeIdGenerator;
+
     @InjectMocks
     private OrderServiceImpl orderService;
 

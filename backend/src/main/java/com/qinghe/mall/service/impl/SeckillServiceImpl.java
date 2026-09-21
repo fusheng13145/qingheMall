@@ -86,6 +86,9 @@ public class SeckillServiceImpl implements SeckillService {
     @Lazy
     private OrderTimeoutQueue orderTimeoutQueue;
 
+    @Autowired
+    private com.qinghe.mall.config.SnowflakeIdGenerator snowflakeIdGenerator;
+
     /** 秒杀水位指标（C2 告警）：可选注入，纯 mock 单测环境为 null 时跳过注册 */
     @Autowired(required = false)
     private MeterRegistry meterRegistry;
@@ -344,7 +347,8 @@ public class SeckillServiceImpl implements SeckillService {
                     // 3) 生成普通订单（秒杀价 × 数量，支付链路零侵入）
                     String no = generateOrderNumber();
                     OrderDO orderDO = new OrderDO();
-                    orderDO.setId(UUIDUtils.uuid());
+                    // B2/v1.6：主键改雪花 BIGINT（order_number 仍为业务键）
+                    orderDO.setId(snowflakeIdGenerator.nextId());
                     orderDO.setOrderNumber(no);
                     orderDO.setUserId(userId);
                     // 商家归属：由商品归属推导落库（NULL=平台自营，M6）

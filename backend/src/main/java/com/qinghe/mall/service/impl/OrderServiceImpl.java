@@ -100,6 +100,9 @@ public class OrderServiceImpl implements OrderService {
     private com.qinghe.mall.service.SettlementService settlementService;
 
     @Autowired
+    private com.qinghe.mall.config.SnowflakeIdGenerator snowflakeIdGenerator;
+
+    @Autowired
     @org.springframework.context.annotation.Lazy
     private com.qinghe.mall.service.SeckillService seckillService;
 
@@ -189,7 +192,8 @@ public class OrderServiceImpl implements OrderService {
                     }
 
                     OrderDO orderDO = new OrderDO();
-                    orderDO.setId(UUIDUtils.uuid());
+                    // B2/v1.6：主键改雪花 BIGINT（order_number 仍为业务键）
+                    orderDO.setId(snowflakeIdGenerator.nextId());
                     orderDO.setOrderNumber(orderNumber);
                     orderDO.setUserId(order.getUserId());
                     // 商家归属：由商品归属推导落库（NULL=平台自营，M6）

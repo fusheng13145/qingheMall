@@ -7,7 +7,7 @@ import java.util.Date;
 
 public class OrderDO {
 
-    private String id;
+    private Long id;
     private String orderNumber;
     private Long userId;
     /** 归属商家ID（NULL=平台自营，M6 平台化；下单时由商品归属推导落库） */
@@ -24,11 +24,11 @@ public class OrderDO {
     private Date gmtCreated;
     private Date gmtModified;
 
-    public String getId() {
+    public Long getId() {
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
@@ -146,7 +146,7 @@ public class OrderDO {
 
     public Order convertToModel() {
         Order order = new Order();
-        order.setId(this.id);
+        order.setId(this.id == null ? null : String.valueOf(this.id));
         order.setOrderNumber(this.orderNumber);
         order.setUserId(this.userId);
         order.setMerchantId(this.merchantId);

@@ -447,4 +447,12 @@ async function handleRefund(order, approve) {
   font-size: 13px;
   color: var(--color-text-secondary);
 }
+/* ========== D1（v1.6）移动端适配：表格横滑 ========== */
+@media (max-width: 640px) {
+  .data-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
 </style>

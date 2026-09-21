@@ -64,6 +64,8 @@ class SeckillServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new SeckillServiceImpl();
+        ReflectionTestUtils.setField(service, "snowflakeIdGenerator",
+                org.mockito.Mockito.mock(com.qinghe.mall.config.SnowflakeIdGenerator.class));
         activityDAO = mock(SeckillActivityDAO.class);
         seckillOrderDAO = mock(SeckillOrderDAO.class);
         orderDAO = mock(OrderDAO.class);

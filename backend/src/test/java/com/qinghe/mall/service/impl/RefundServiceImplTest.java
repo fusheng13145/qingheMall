@@ -76,7 +76,7 @@ class RefundServiceImplTest {
 
     private OrderDO order(String orderNumber, Long userId, String status) {
         OrderDO od = new OrderDO();
-        od.setId("oid-" + orderNumber);
+        od.setId(123456789012345678L); // B2：OrderDO.id 已改 Long
         od.setOrderNumber(orderNumber);
         od.setUserId(userId);
         od.setStatus(status);

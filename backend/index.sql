@@ -49,8 +49,10 @@ CREATE TABLE product_detail (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品详情表';
 
 -- 订单表（M6：merchant_id 归属商家；A2：coupon_id/discount_amount 优惠券）
+-- 订单表（B2/v1.6：主键改雪花 BIGINT，按 gmt_created 季度桶分区；
+-- uk_order_number 复合化以满足「唯一键须含分区键」的 MySQL 约束）
 CREATE TABLE `order` (
-    `id` varchar(64) NOT NULL COMMENT '主键ID',
+    `id` bigint unsigned NOT NULL COMMENT '主键ID(雪花)',
     `order_number` varchar(64) NOT NULL COMMENT '订单编号',
     `user_id` bigint NOT NULL COMMENT '用户ID',
     `merchant_id` bigint DEFAULT NULL COMMENT '归属商家ID(NULL=平台自营)',
@@ -65,12 +67,19 @@ CREATE TABLE `order` (
     `receiver_address` varchar(255) DEFAULT NULL COMMENT '收货地址',
     `gmt_created` datetime NOT NULL COMMENT '创建时间',
     `gmt_modified` datetime NOT NULL COMMENT '修改时间',
-    PRIMARY KEY (`id`),
-    UNIQUE KEY uk_order_number (`order_number`) COMMENT 'P1-5：订单号唯一约束（防生成碰撞兜底）',
+    PRIMARY KEY (`id`, `gmt_created`),
+    UNIQUE KEY uk_order_number (`order_number`, `gmt_created`) COMMENT 'P1-5：订单号唯一约束（复合化含分区键，防生成碰撞兜底）',
     KEY idx_user_id (`user_id`),
     KEY idx_merchant_id (`merchant_id`) COMMENT '商家订单索引',
     KEY idx_status_created (`status`, `gmt_created`) COMMENT 'P1-9：超时关单/报表/状态聚合'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表'
+PARTITION BY RANGE COLUMNS (gmt_created) (
+    PARTITION p_hist  VALUES LESS THAN ('2026-10-01'),
+    PARTITION p2026Q4 VALUES LESS THAN ('2027-01-01'),
+    PARTITION p2027Q1 VALUES LESS THAN ('2027-04-01'),
+    PARTITION p2027Q2 VALUES LESS THAN ('2027-07-01'),
+    PARTITION pmax    VALUES LESS THAN MAXVALUE
+);
 
 -- 购物车表
 CREATE TABLE cart (

@@ -700,4 +700,29 @@ onMounted(() => load(1))
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* ========== D1（v1.6）移动端适配：三弹窗 sheet 化 + 表格横滑 ========== */
+@media (max-width: 640px) {
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .modal {
+    max-width: 100%;
+    max-height: 88vh;
+    overflow-y: auto;
+    border-radius: 14px 14px 0 0;
+  }
+  .modal-title,
+  .modal-sub,
+  .modal-actions {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .data-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
 </style>
