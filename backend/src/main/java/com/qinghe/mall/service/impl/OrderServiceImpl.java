@@ -360,6 +360,9 @@ public class OrderServiceImpl implements OrderService {
     private List<BigDecimal> allocateDiscount(BigDecimal totalDiscount, List<Order> eligibleOrders,
                                               Map<Order, BigDecimal> originalTotals) {
         int n = eligibleOrders.size();
+        if (n == 0) {
+            return new ArrayList<>();
+        }
         long totalCents = totalDiscount.movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact();
         long[] originalCents = new long[n];
         long originalSum = 0;
@@ -368,16 +371,25 @@ public class OrderServiceImpl implements OrderService {
                     .setScale(0, RoundingMode.HALF_UP).longValueExact();
             originalSum += originalCents[i];
         }
+        // 防御：无原价合计或零优惠无从分摊，全零返回（业务路径不可达，v1.11 缺口补测发现的防御缺陷）
+        if (originalSum == 0 || totalCents == 0) {
+            List<BigDecimal> zeros = new ArrayList<>(n);
+            for (int i = 0; i < n; i++) {
+                zeros.add(BigDecimal.ZERO);
+            }
+            return zeros;
+        }
         long[] alloc = new long[n];
         long[] remainders = new long[n];
         long distributed = 0;
         for (int i = 0; i < n; i++) {
             long exact = totalCents * originalCents[i];
-            alloc[i] = originalSum == 0 ? 0 : exact / originalSum;
-            remainders[i] = originalSum == 0 ? 0 : exact % originalSum;
+            alloc[i] = exact / originalSum;
+            remainders[i] = exact % originalSum;
             distributed += alloc[i];
         }
-        // Hamilton：余数大者优先 +1（并列取小索引，保证确定性）
+        // Hamilton：余数大者优先 +1（并列取小索引，保证确定性）。
+        // 数学上 leftover ≤ n-1 且每索引至多 +1，循环内 best 恒有解（v1.11 缺口补测的越界缺陷由此前置守卫根治）
         long leftover = totalCents - distributed;
         while (leftover > 0) {
             int best = -1;

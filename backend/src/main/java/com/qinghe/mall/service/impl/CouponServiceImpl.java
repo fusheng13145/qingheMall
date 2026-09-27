@@ -58,6 +58,11 @@ public class CouponServiceImpl implements CouponService {
         if (StringUtils.isBlank(coupon.getStatus())) {
             coupon.setStatus("ACTIVE");
         }
+        // v1.11：discount 为 NOT NULL 列（折扣券用，满减券语义上恒为 1.00）——未传时补中性值，
+        // 修复裸 API 缺省触发非空约束 500 的历史缺口（复盘 §11.7-P1）
+        if (coupon.getDiscount() == null) {
+            coupon.setDiscount(java.math.BigDecimal.ONE);
+        }
     }
 
     @Override
@@ -101,6 +106,10 @@ public class CouponServiceImpl implements CouponService {
         }
         if ("ACTIVE".equals(existing.getStatus())) {
             throw new BusinessException("上架中的券不可修改，请先下架");
+        }
+        // v1.11：更新未传 discount 时沿用旧值（同非空列防御，平台/商家两处更新同口径）
+        if (coupon.getDiscount() == null) {
+            coupon.setDiscount(existing.getDiscount() != null ? existing.getDiscount() : java.math.BigDecimal.ONE);
         }
         couponDAO.update(coupon);
         return couponDAO.findById(coupon.getId());
@@ -160,6 +169,10 @@ public class CouponServiceImpl implements CouponService {
         }
         if ("ACTIVE".equals(existing.getStatus())) {
             throw new BusinessException("上架中的券不可修改，请先下架");
+        }
+        // v1.11：更新未传 discount 时沿用旧值（同非空列防御，平台/商家两处更新同口径）
+        if (coupon.getDiscount() == null) {
+            coupon.setDiscount(existing.getDiscount() != null ? existing.getDiscount() : java.math.BigDecimal.ONE);
         }
         couponDAO.update(coupon);
         return couponDAO.findById(coupon.getId());
