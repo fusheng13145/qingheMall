@@ -105,4 +105,12 @@ public interface OrderDAO {
     int countActiveByCouponExcluding(@Param("couponId") String couponId,
                                      @Param("userId") Long userId,
                                      @Param("excludeOrderNumber") String excludeOrderNumber);
+
+
+/**
+ * 个性化推荐（v1.10）：用户历史购买的品牌偏好分布（排除取消/超时关闭单）。
+ * 返回 [{brand, orderCount}]，按购买次数降序，取前 limit 个品牌。
+ */
+List<java.util.Map<String, Object>> brandAffinity(@Param("userId") Long userId,
+                                                  @Param("limit") int limit);
 }

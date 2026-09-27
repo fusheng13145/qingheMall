@@ -14,8 +14,12 @@ import com.qinghe.mall.service.ProductDetailService;
 import com.qinghe.mall.service.ProductService;
 import com.qinghe.mall.util.UUIDUtils;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -37,6 +41,9 @@ public class ProductServiceImpl implements ProductService {
 
     @Autowired
     private ProductIndexService productIndexService;
+
+    @Autowired
+    private com.qinghe.mall.dao.OrderDAO orderDAO;
 
     private static final Logger log = LoggerFactory.getLogger(ProductServiceImpl.class);
 
@@ -200,5 +207,39 @@ public class ProductServiceImpl implements ProductService {
             productIndexService.delete(id);
         }
         return deleted;
+    }
+
+
+    /**
+     * 个性化推荐（v1.10）：按用户历史购买的品牌偏好对在售商品重排。
+     * 候选池取热销前 3×limit（ES 优先/MySQL 降级双路同语义），品牌命中者优先且组内保持热销次序；
+     * 未登录或无购买历史降级热销。已购商品暂不排除（演进项：做「买过又买/新品优先」混合策略）。
+     */
+    @Override
+    public List<Product> recommendForUser(Long userId, int limit) {
+        int size = Math.min(Math.max(limit, 1), 20);
+        List<Map<String, Object>> affinity = userId == null
+                ? Collections.emptyList()
+                : orderDAO.brandAffinity(userId, 5);
+        Paging<Product> pool = queryOnSalePage(1, size * 3, null, null, "sales_desc");
+        List<Product> candidates = pool.getData() == null ? Collections.emptyList() : pool.getData();
+        if (affinity.isEmpty()) {
+            return candidates.size() > size ? new ArrayList<>(candidates.subList(0, size)) : candidates;
+        }
+        Set<String> preferred = affinity.stream()
+                .map(m -> String.valueOf(m.get("brand")))
+                .collect(Collectors.toSet());
+        List<Product> matched = new ArrayList<>();
+        List<Product> rest = new ArrayList<>();
+        for (Product p : candidates) {
+            if (p.getBrand() != null && preferred.contains(p.getBrand())) {
+                matched.add(p);
+            } else {
+                rest.add(p);
+            }
+        }
+        List<Product> result = new ArrayList<>(matched);
+        result.addAll(rest);
+        return result.size() > size ? new ArrayList<>(result.subList(0, size)) : result;
     }
 }

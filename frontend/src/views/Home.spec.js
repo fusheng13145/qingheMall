@@ -15,6 +15,12 @@ vi.mock('../api/banner.js', () => ({
 vi.mock('../stores/theme', () => ({
   useThemeStore: () => ({ getEffectiveTheme: () => 'light' })
 }))
+const { mockUserStore } = vi.hoisted(() => ({
+  mockUserStore: { isLoggedIn: false }
+}))
+vi.mock('../stores/user', () => ({
+  useUserStore: () => mockUserStore
+}))
 
 import Home from './Home.vue'
 
@@ -94,6 +100,18 @@ describe('Home 首页（D2 v1.7：运营位 + 推荐位）', () => {
 
     expect(wrapper.find('.banner-zone').exists()).toBe(false)
     expect(wrapper.findAllComponents({ name: 'ProductCard' })).toHaveLength(1)
+  })
+
+  it('登录用户第一区块走个性化推荐（为你推荐）', async () => {
+    mockUserStore.isLoggedIn = true
+    recommend.mockImplementation((scene) => Promise.resolve(productPage(scene === 'personal' ? 2 : 1)))
+    const wrapper = makeHome()
+    await flushPromises()
+
+    expect(recommend).toHaveBeenCalledWith('personal', 8)
+    expect(recommend).toHaveBeenCalledWith('new', 8)
+    expect(wrapper.text()).toContain('为你推荐')
+    mockUserStore.isLoggedIn = false
   })
 
   it('渲染品牌标语与特性区域', () => {

@@ -25,14 +25,23 @@ public class ProductController {
     @Autowired
     private ProductDetailService productDetailService;
 
-    /** 推荐位（D2，v1.7）：scene=hot 热销（销量降序）/ new 新品（上架时间降序），公开接口，取前 limit 条 */
+    /**
+     * 推荐位（D2，v1.7；personal 场景 v1.10）：公开接口，取前 limit 条。
+     * scene=hot 热销（销量降序）/ new 新品（上架时间降序）/ personal 个性化
+     * （登录用户按历史购买品牌偏好重排；未登录或无历史由服务端降级热销）。
+     */
     @GetMapping("/product/recommend")
     public Result<List<Product>> recommend(@RequestParam(value = "scene", defaultValue = "hot") String scene,
-                                           @RequestParam(value = "limit", defaultValue = "8") Integer limit) {
-        if (!"hot".equals(scene) && !"new".equals(scene)) {
-            throw new com.qinghe.mall.exception.BusinessException("不支持的推荐场景（hot/new）");
-        }
+                                           @RequestParam(value = "limit", defaultValue = "8") Integer limit,
+                                           jakarta.servlet.http.HttpServletRequest request) {
         int size = limit == null ? 8 : Math.min(Math.max(limit, 1), 20);
+        if ("personal".equals(scene)) {
+            Long userId = (Long) request.getSession().getAttribute("userId");
+            return Result.success(productService.recommendForUser(userId, size));
+        }
+        if (!"hot".equals(scene) && !"new".equals(scene)) {
+            throw new com.qinghe.mall.exception.BusinessException("不支持的推荐场景（hot/new/personal）");
+        }
         // hot 走销量排序（ES/MySQL 双路同语义）；new 复用默认上架时间降序
         String sort = "hot".equals(scene) ? "sales_desc" : null;
         Paging<Product> page = productService.queryOnSalePage(1, size, null, null, sort);

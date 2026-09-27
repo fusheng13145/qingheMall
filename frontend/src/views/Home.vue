@@ -86,7 +86,7 @@
 
     <section class="featured">
       <div class="section-header">
-        <h2 class="section-title">热销推荐</h2>
+        <h2 class="section-title">{{ isLoggedIn ? '为你推荐' : '热销推荐' }}</h2>
         <router-link to="/products" class="section-more">
           查看更多
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
@@ -134,9 +134,13 @@ import { recommend } from '../api/product.js'
 import { listBanners } from '../api/banner.js'
 import ProductCard from '../components/ProductCard.vue'
 import { useThemeStore } from '../stores/theme'
+import { useUserStore } from '../stores/user'
 
 const themeStore = useThemeStore()
 const isDark = computed(() => themeStore.getEffectiveTheme() === 'dark')
+// 个性化推荐（v1.10）：登录用户按历史购买品牌偏好重排（路由守卫已 await checkLogin，进入本页时登录态就绪）
+const userStore = useUserStore()
+const isLoggedIn = computed(() => userStore.isLoggedIn)
 
 const hotProducts = ref([])
 const newProducts = ref([])
@@ -171,7 +175,7 @@ onMounted(async () => {
   try {
     // request.js 拦截器约定：业务成功直接 resolve Result 包络，res.data 即业务数据
     const [hotRes, newRes] = await Promise.all([
-      recommend('hot', 8),
+      recommend(isLoggedIn.value ? 'personal' : 'hot', 8),
       recommend('new', 8)
     ])
     hotProducts.value = (hotRes && hotRes.data) || []

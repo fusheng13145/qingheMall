@@ -59,3 +59,6 @@ perf/w_*.html
 # ============ Playwright e2e 产物（不入库） ============
 frontend/test-results/
 frontend/playwright-report/
+
+# 数据库备份产物（v1.10 备份预案，db-backup.sh 输出）
+/backups/

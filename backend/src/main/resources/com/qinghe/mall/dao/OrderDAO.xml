@@ -210,4 +210,17 @@
           AND order_number != #{excludeOrderNumber}
           AND status NOT IN ('TRADE_REFUNDED', 'TRADE_CLOSED')
     </select>
+
+<!-- 个性化推荐（v1.10）：用户历史购买的品牌偏好分布（排除取消/超时关闭单） -->
+<select id="brandAffinity" resultType="java.util.HashMap">
+    SELECT p.brand AS brand, COUNT(*) AS orderCount
+    FROM `order` o
+    JOIN product_detail pd ON o.product_detail_id = pd.id
+    JOIN product p ON pd.product_id = p.id
+    WHERE o.user_id = #{userId}
+      AND o.status NOT IN ('TRADE_CLOSED')
+    GROUP BY p.brand
+    ORDER BY orderCount DESC, brand ASC
+    LIMIT #{limit}
+</select>
 </mapper>

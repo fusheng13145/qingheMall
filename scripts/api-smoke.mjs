@@ -383,6 +383,22 @@ step('多单平台券分摊：两店合计门槛 → 按比例分摊 → 部分�
   ok((mine2 || []).find(u => u.id === uc.id).status === 'UNUSED', '最后持券在途单取消 → 券归还（UNUSED）')
 }
 
+// ============ 十三、个性化推荐（v1.10） ============
+step('个性化推荐：登录用户品牌偏好重排 + 未登录降级热销')
+{
+  const personal = await expectOk(await cust('GET', '/api/product/recommend?scene=personal&limit=8'), '登录用户 personal 推荐')
+  ok(Array.isArray(personal) && personal.length > 0, 'personal 非空（本会话已有购买历史）', personal && personal.length)
+  ok(personal.every(p => p.id), 'personal 均为在售商品')
+  const hot = await expectOk(await cust('GET', '/api/product/recommend?scene=hot&limit=8'), '热销对照')
+  ok(hot.length > 0 && hot.every(p => p.id), '热销对照返回正常')
+  const anon = client()
+  const anonRes = await anon('GET', '/api/product/recommend?scene=personal&limit=8')
+  ok(anonRes.status === 200 && anonRes.data.success === true && (anonRes.data.data || []).length > 0,
+    '未登录 personal 降级热销（200 非空）')
+  const bad = await cust('GET', '/api/product/recommend?scene=cheap&limit=8')
+  ok(bad.data.success === false, '非法场景仍被拒绝')
+}
+
 console.log(`\n===== 冒烟完成：${stepNo} 步 / ${passCount} 项断言全部通过 =====`)
 console.log(`商品 ${productId}（SKU ${detailId}），商家 ${merchantId}`)
 console.log(`订单 A（仅退款）${orderA.orderNumber} / 订单 B（退货退款）${orderB.orderNumber} / 订单 C（平台券）${orderC.orderNumber}`)

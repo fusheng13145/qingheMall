@@ -11,6 +11,12 @@ public interface ProductService {
     /** 顾客端在售商品分页（仅 status=ON，M6） */
     Paging<Product> queryOnSalePage(Integer pagination, Integer pageSize, String keyword, String brand, String sort);
 
+    /**
+     * 个性化推荐（v1.10）：登录用户按历史购买品牌偏好对在售商品重排（品牌命中优先，销量为组内次序）；
+     * 未登录或无购买历史降级热销（sales_desc）。
+     */
+    java.util.List<Product> recommendForUser(Long userId, int limit);
+
     /** 商家店铺商品分页（按 merchant_id 归属过滤，M6） */
     Paging<Product> queryMerchantPage(Long merchantId, String keyword, String status, int pageNum, int pageSize);
 
