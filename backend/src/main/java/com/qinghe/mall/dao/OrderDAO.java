@@ -113,4 +113,10 @@ public interface OrderDAO {
  */
 List<java.util.Map<String, Object>> brandAffinity(@Param("userId") Long userId,
                                                   @Param("limit") int limit);
+
+
+/**
+ * 个性化推荐（v1.13）：用户已购商品 ID 集合（全状态订单，DISTINCT 去重）。
+ */
+List<String> findPurchasedProductIds(@Param("userId") Long userId);
 }

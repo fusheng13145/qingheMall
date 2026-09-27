@@ -17,7 +17,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
@@ -43,7 +42,7 @@ public class ProductServiceImpl implements ProductService {
     private ProductIndexService productIndexService;
 
     @Autowired
-    private com.qinghe.mall.dao.OrderDAO orderDAO;
+    private com.qinghe.mall.service.UserAffinityService userAffinityService;
 
     private static final Logger log = LoggerFactory.getLogger(ProductServiceImpl.class);
 
@@ -211,24 +210,24 @@ public class ProductServiceImpl implements ProductService {
 
 
     /**
-     * 个性化推荐（v1.10）：按用户历史购买的品牌偏好对在售商品重排。
-     * 候选池取热销前 3×limit（ES 优先/MySQL 降级双路同语义），品牌命中者优先且组内保持热销次序；
-     * 未登录或无购买历史降级热销。已购商品暂不排除（演进项：做「买过又买/新品优先」混合策略）。
+     * 个性化推荐（v1.10；v1.13 重构）：按用户偏好对在售商品重排。
+     * 候选池取热销前 3×limit（ES 优先/MySQL 降级双路同语义）；
+     * ① 排除已购商品（不足 limit 时按热销次序回补，保证返回密度）；
+     * ② 品牌命中优先且组内保持热销次序；
+     * 未登录或无偏好且无已购降级热销。跨域订单读已收敛至 UserAffinityService。
      */
     @Override
     public List<Product> recommendForUser(Long userId, int limit) {
         int size = Math.min(Math.max(limit, 1), 20);
-        List<Map<String, Object>> affinity = userId == null
-                ? Collections.emptyList()
-                : orderDAO.brandAffinity(userId, 5);
+        List<String> preferred = userAffinityService.preferredBrands(userId, 5);
+        Set<String> purchased = userAffinityService.purchasedProductIds(userId);
+        if (preferred.isEmpty() && purchased.isEmpty()) {
+            return hotTop(userId, size);
+        }
         Paging<Product> pool = queryOnSalePage(1, size * 3, null, null, "sales_desc");
         List<Product> candidates = pool.getData() == null ? Collections.emptyList() : pool.getData();
-        if (affinity.isEmpty()) {
-            return candidates.size() > size ? new ArrayList<>(candidates.subList(0, size)) : candidates;
-        }
-        Set<String> preferred = affinity.stream()
-                .map(m -> String.valueOf(m.get("brand")))
-                .collect(Collectors.toSet());
+
+        // ① 品牌命中优先（稳定分区，组内保持热销次序）
         List<Product> matched = new ArrayList<>();
         List<Product> rest = new ArrayList<>();
         for (Product p : candidates) {
@@ -238,8 +237,26 @@ public class ProductServiceImpl implements ProductService {
                 rest.add(p);
             }
         }
-        List<Product> result = new ArrayList<>(matched);
-        result.addAll(rest);
+        List<Product> ordered = new ArrayList<>(matched);
+        ordered.addAll(rest);
+
+        // ② 已购后移（新鲜度优先）：未购的按偏好序在前，不足 limit 时按偏好序回补已购
+        List<Product> freshOrdered = new ArrayList<>();
+        List<Product> boughtOrdered = new ArrayList<>();
+        for (Product p : ordered) {
+            (p.getId() != null && purchased.contains(p.getId()) ? boughtOrdered : freshOrdered).add(p);
+        }
+        List<Product> result = new ArrayList<>(freshOrdered);
+        if (result.size() < size) {
+            result.addAll(boughtOrdered);
+        }
         return result.size() > size ? new ArrayList<>(result.subList(0, size)) : result;
+    }
+
+    /** 热销降级：未登录/无画像时取热销前 size（ES/MySQL 双路） */
+    private List<Product> hotTop(Long userId, int size) {
+        Paging<Product> pool = queryOnSalePage(1, size, null, null, "sales_desc");
+        List<Product> data = pool.getData() == null ? Collections.emptyList() : pool.getData();
+        return data.size() > size ? new ArrayList<>(data.subList(0, size)) : data;
     }
 }

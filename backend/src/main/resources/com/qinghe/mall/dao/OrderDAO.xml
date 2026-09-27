@@ -223,4 +223,13 @@
     ORDER BY orderCount DESC, brand ASC
     LIMIT #{limit}
 </select>
+
+<!-- 个性化推荐（v1.13）：用户已购商品 ID 集合 -->
+<select id="findPurchasedProductIds" resultType="java.lang.String">
+    SELECT DISTINCT p.id
+    FROM `order` o
+    JOIN product_detail pd ON o.product_detail_id = pd.id
+    JOIN product p ON pd.product_id = p.id
+    WHERE o.user_id = #{userId}
+</select>
 </mapper>
