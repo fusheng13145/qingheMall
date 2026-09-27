@@ -5,9 +5,7 @@ import {
   createMerchantCoupon,
   listMerchantCoupons,
   toggleMerchantCoupon,
-  createMerchantSeckill,
   listMerchantSeckills,
-  toggleMerchantSeckill,
   listMerchantProducts
 } from '../../api/merchant'
 import { getProductDetails } from '../../api/product'
