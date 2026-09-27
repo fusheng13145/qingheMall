@@ -14,6 +14,12 @@ export function pageQuery(pageNum, pageSize, params = {}) {
   })
 }
 
+// 推荐位（D2，v1.7）：GET /api/product/recommend?scene=&limit=
+// scene: hot(热销，销量降序) | new(新品，上架时间降序)
+export function recommend(scene, limit = 8) {
+  return request.get('/product/recommend', { params: { scene, limit } })
+}
+
 // 品牌列表（筛选下拉）：GET /api/product/brands
 export function listBrands() {
   return request.get('/product/brands')

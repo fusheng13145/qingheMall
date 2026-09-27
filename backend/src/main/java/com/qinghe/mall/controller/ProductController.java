@@ -25,6 +25,20 @@ public class ProductController {
     @Autowired
     private ProductDetailService productDetailService;
 
+    /** 推荐位（D2，v1.7）：scene=hot 热销（销量降序）/ new 新品（上架时间降序），公开接口，取前 limit 条 */
+    @GetMapping("/product/recommend")
+    public Result<List<Product>> recommend(@RequestParam(value = "scene", defaultValue = "hot") String scene,
+                                           @RequestParam(value = "limit", defaultValue = "8") Integer limit) {
+        if (!"hot".equals(scene) && !"new".equals(scene)) {
+            throw new com.qinghe.mall.exception.BusinessException("不支持的推荐场景（hot/new）");
+        }
+        int size = limit == null ? 8 : Math.min(Math.max(limit, 1), 20);
+        // hot 走销量排序（ES/MySQL 双路同语义）；new 复用默认上架时间降序
+        String sort = "hot".equals(scene) ? "sales_desc" : null;
+        Paging<Product> page = productService.queryOnSalePage(1, size, null, null, sort);
+        return Result.success(page.getData() == null ? List.of() : page.getData());
+    }
+
     /** 商品分页（P2-12：页码统一 pageNum，旧参数 pagination 仍兼容） */
     @GetMapping("/product/page")
     public Result<Paging<Product>> pageQuery(@RequestParam(value = "pageNum", required = false) Integer pageNum,

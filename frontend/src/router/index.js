@@ -98,7 +98,8 @@ const routes = [
       { path: 'seckills', name: 'AdminSeckills', component: () => import('../views/admin/Seckill.vue') },
       { path: 'merchants', name: 'AdminMerchants', component: () => import('../views/admin/Merchants.vue') },
       { path: 'users', name: 'AdminUsers', component: () => import('../views/admin/Users.vue') },
-      { path: 'settlement', name: 'AdminSettlement', component: () => import('../views/admin/Settlement.vue') }
+      { path: 'settlement', name: 'AdminSettlement', component: () => import('../views/admin/Settlement.vue') },
+      { path: 'banners', name: 'AdminBanners', component: () => import('../views/admin/BannerManage.vue') }
     ]
   },
   {

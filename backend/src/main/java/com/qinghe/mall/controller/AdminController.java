@@ -2,6 +2,7 @@ package com.qinghe.mall.controller;
 
 import com.qinghe.mall.model.*;
 import com.qinghe.mall.service.*;
+import com.qinghe.mall.dataobject.BannerDO;
 import com.qinghe.mall.dataobject.CouponDO;
 import com.qinghe.mall.util.PageParams;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +24,7 @@ public class AdminController {
     @Autowired private com.qinghe.mall.service.LogisticsService logisticsService;
     @Autowired private com.qinghe.mall.service.RefundService refundService;
     @Autowired private com.qinghe.mall.service.SettlementService settlementService;
+    @Autowired private com.qinghe.mall.service.BannerService bannerService;
 
     // 检查管理员权限的私有方法
     private boolean checkAdmin(HttpServletRequest request) {
@@ -366,5 +368,59 @@ public class AdminController {
             return Result.fail(403, "无管理员权限");
         }
         return Result.success(settlementService.billEntries(billId));
+    }
+
+    // ========== 首页运营位（D2，v1.7） ==========
+
+    /** 新建运营位（默认上架、排序 0） */
+    @PostMapping("/banner/create")
+    public Result<BannerDO> createBanner(@RequestBody BannerDO banner, HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(bannerService.createBanner(banner));
+    }
+
+    /** 运营位全量分页（含下架） */
+    @GetMapping("/banner/list")
+    public Result<Paging<BannerDO>> listBanners(
+            @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
+            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize,
+            HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(bannerService.listBanners(pageNum, pageSize));
+    }
+
+    /** 更新运营位内容（标题/图片/链接/排序；状态走 toggle） */
+    @PostMapping("/banner/update")
+    public Result<BannerDO> updateBanner(@RequestBody BannerDO banner, HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        return Result.success(bannerService.updateBanner(banner));
+    }
+
+    /** 删除运营位 */
+    @PostMapping("/banner/delete")
+    public Result<Void> deleteBanner(@RequestParam("bannerId") String bannerId, HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        bannerService.deleteBanner(bannerId);
+        return Result.success();
+    }
+
+    /** 上下架运营位（status: ON / OFF） */
+    @PostMapping("/banner/toggle")
+    public Result<Void> toggleBanner(@RequestParam("bannerId") String bannerId,
+                                     @RequestParam("status") String status,
+                                     HttpServletRequest request) {
+        if (!checkAdmin(request)) {
+            return Result.fail(403, "无管理员权限");
+        }
+        bannerService.toggleBanner(bannerId, status);
+        return Result.success();
     }
 }

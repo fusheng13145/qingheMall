@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qinghe.mall.dao.BannerDAO">
+
+    <resultMap id="BaseResultMap" type="com.qinghe.mall.dataobject.BannerDO">
+        <id column="id" property="id" jdbcType="VARCHAR"/>
+        <result column="title" property="title" jdbcType="VARCHAR"/>
+        <result column="image" property="image" jdbcType="VARCHAR"/>
+        <result column="link_url" property="linkUrl" jdbcType="VARCHAR"/>
+        <result column="sort_order" property="sortOrder" jdbcType="INTEGER"/>
+        <result column="status" property="status" jdbcType="VARCHAR"/>
+        <result column="gmt_created" property="gmtCreated" jdbcType="TIMESTAMP"/>
+        <result column="gmt_modified" property="gmtModified" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, title, image, link_url, sort_order, status, gmt_created, gmt_modified
+    </sql>
+
+    <insert id="insert" parameterType="com.qinghe.mall.dataobject.BannerDO">
+        INSERT INTO home_banner (id, title, image, link_url, sort_order, status, gmt_created, gmt_modified)
+        VALUES (#{id}, #{title}, #{image}, #{linkUrl}, #{sortOrder}, #{status}, #{gmtCreated}, #{gmtModified})
+    </insert>
+
+    <update id="update" parameterType="com.qinghe.mall.dataobject.BannerDO">
+        UPDATE home_banner
+        SET title = #{title}, image = #{image}, link_url = #{linkUrl},
+            sort_order = #{sortOrder}, gmt_modified = #{gmtModified}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM home_banner WHERE id = #{id}
+    </delete>
+
+    <update id="updateStatus">
+        UPDATE home_banner SET status = #{status}, gmt_modified = NOW() WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM home_banner
+        WHERE id = #{id}
+    </select>
+
+    <select id="findAll" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM home_banner
+        ORDER BY sort_order ASC, gmt_created DESC
+    </select>
+
+    <select id="findActive" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM home_banner
+        WHERE status = 'ON'
+        ORDER BY sort_order ASC, gmt_created DESC
+    </select>
+</mapper>

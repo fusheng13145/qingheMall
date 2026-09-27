@@ -306,6 +306,38 @@ step('管理端：dashboard / 营收报表 / 用户与订单分页')
   await expectOk(await admin('GET', '/api/admin/order/list?pageNum=1&pageSize=10'), '订单分页')
 }
 
+// ============ 十一、首页运营位 + 推荐位（D2，v1.7） ============
+step('运营位全链路：管理端创建/上下架 → 顾客端可见性联动')
+{
+  const created = await expectOk(await admin('POST', '/api/admin/banner/create', { json: {
+    title: `冒烟运营位${ts}`, image: '/uploads/banner-smoke.jpg', linkUrl: '/products', sortOrder: 1
+  } }), '运营位创建（默认上架）')
+  const adminList = await expectOk(await admin('GET', '/api/admin/banner/list?pageNum=1&pageSize=20'), '管理端分页')
+  ok((adminList.data || []).some(b => b.id === created.id), '管理端列表含新位')
+  let pub = await expectOk(await cust('GET', '/api/banner/list'), '顾客端公开列表')
+  ok((pub || []).some(b => b.id === created.id), '上架后顾客端可见')
+  await expectOk(await admin('POST', '/api/admin/banner/toggle', { form: { bannerId: created.id, status: 'OFF' } }), '下架 OFF')
+  pub = await expectOk(await cust('GET', '/api/banner/list'), '下架后顾客端列表')
+  ok(!(pub || []).some(b => b.id === created.id), '下架后顾客端不可见')
+  await expectOk(await admin('POST', '/api/admin/banner/toggle', { form: { bannerId: created.id, status: 'ON' } }), '重新上架 ON')
+  await expectOk(await admin('POST', '/api/admin/banner/delete', { form: { bannerId: created.id } }), '删除运营位')
+  pub = await expectOk(await cust('GET', '/api/banner/list'), '删除后顾客端列表')
+  ok(!(pub || []).some(b => b.id === created.id), '删除后顾客端不可见')
+}
+step('推荐位：hot 热销（销量降序）/ new 新品（上架时间降序）')
+{
+  const hot = await expectOk(await cust('GET', '/api/product/recommend?scene=hot&limit=8'), '热销推荐')
+  ok(Array.isArray(hot) && hot.length > 0, '热销位非空', hot && hot.length)
+  for (let i = 1; i < hot.length; i++) {
+    ok(Number(hot[i - 1].purchaseNum) >= Number(hot[i].purchaseNum), `销量降序有序（#${i}）`)
+  }
+  const fresh = await expectOk(await cust('GET', '/api/product/recommend?scene=new&limit=8'), '新品推荐')
+  ok(Array.isArray(fresh) && fresh.length > 0, '新品位非空')
+  ok(hot.every(p => p.id) && fresh.every(p => p.id), '两路均返回在售商品')
+  const bad = await cust('GET', '/api/product/recommend?scene=cheap&limit=8')
+  ok(bad.status === 200 && bad.data && bad.data.success === false, '非法场景被拒绝', bad.data)
+}
+
 console.log(`\n===== 冒烟完成：${stepNo} 步 / ${passCount} 项断言全部通过 =====`)
 console.log(`商品 ${productId}（SKU ${detailId}），商家 ${merchantId}`)
 console.log(`订单 A（仅退款）${orderA.orderNumber} / 订单 B（退货退款）${orderB.orderNumber} / 订单 C（平台券）${orderC.orderNumber}`)

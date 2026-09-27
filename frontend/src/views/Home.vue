@@ -55,16 +55,45 @@
       </div>
     </section>
 
+    <section v-if="banners.length" class="banner-zone" aria-label="运营位">
+      <div class="banner-stage" @mouseenter="pauseCarousel" @mouseleave="resumeCarousel">
+        <component
+          :is="bannerInternal(b) ? 'router-link' : 'a'"
+          v-for="(b, i) in banners"
+          v-show="i === bannerIndex"
+          :key="b.id"
+          class="banner-slide"
+          :to="bannerInternal(b) ? b.linkUrl : undefined"
+          :href="bannerInternal(b) ? undefined : b.linkUrl"
+          :target="bannerInternal(b) ? undefined : '_blank'"
+          rel="noopener"
+        >
+          <img :src="b.image" :alt="b.title" loading="lazy" />
+          <span class="banner-title">{{ b.title }}</span>
+        </component>
+        <div v-if="banners.length > 1" class="banner-dots">
+          <button
+            v-for="(b, i) in banners"
+            :key="'dot-' + b.id"
+            class="banner-dot"
+            :class="{ active: i === bannerIndex }"
+            :aria-label="`切换到第 ${i + 1} 张运营位`"
+            @click="bannerIndex = i"
+          ></button>
+        </div>
+      </div>
+    </section>
+
     <section class="featured">
       <div class="section-header">
-        <h2 class="section-title">热门商品</h2>
+        <h2 class="section-title">热销推荐</h2>
         <router-link to="/products" class="section-more">
           查看更多
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         </router-link>
       </div>
-      <div v-if="products.length > 0" class="product-grid">
-        <ProductCard v-for="product in products" :key="product.id" :product="product" />
+      <div v-if="hotProducts.length > 0" class="product-grid">
+        <ProductCard v-for="product in hotProducts" :key="product.id" :product="product" />
       </div>
       <div v-else-if="loading" class="loading-state">
         <div class="loading-spinner"></div>
@@ -75,29 +104,89 @@
         <p>暂无商品</p>
       </div>
     </section>
+
+    <section class="featured">
+      <div class="section-header">
+        <h2 class="section-title">新品上架</h2>
+        <router-link to="/products" class="section-more">
+          查看更多
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </router-link>
+      </div>
+      <div v-if="newProducts.length > 0" class="product-grid">
+        <ProductCard v-for="product in newProducts" :key="product.id" :product="product" />
+      </div>
+      <div v-else-if="loading" class="loading-state">
+        <div class="loading-spinner"></div>
+        <span>加载中...</span>
+      </div>
+      <div v-else class="empty-state">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="8" y1="15" x2="16" y2="15"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        <p>暂无新品</p>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { pageQuery } from '../api/product.js'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { recommend } from '../api/product.js'
+import { listBanners } from '../api/banner.js'
 import ProductCard from '../components/ProductCard.vue'
 import { useThemeStore } from '../stores/theme'
 
 const themeStore = useThemeStore()
 const isDark = computed(() => themeStore.getEffectiveTheme() === 'dark')
 
-const products = ref([])
+const hotProducts = ref([])
+const newProducts = ref([])
+const banners = ref([])
 const loading = ref(true)
+
+// 运营位轮播：5s 自动切换，悬停暂停
+const bannerIndex = ref(0)
+let carouselTimer = null
+function startCarousel() {
+  stopCarousel()
+  if (banners.value.length > 1) {
+    carouselTimer = setInterval(() => {
+      bannerIndex.value = (bannerIndex.value + 1) % banners.value.length
+    }, 5000)
+  }
+}
+function stopCarousel() {
+  if (carouselTimer) {
+    clearInterval(carouselTimer)
+    carouselTimer = null
+  }
+}
+function pauseCarousel() { stopCarousel() }
+function resumeCarousel() { startCarousel() }
+function bannerInternal(b) {
+  return !!(b.linkUrl && b.linkUrl.startsWith('/'))
+}
+onUnmounted(stopCarousel)
 
 onMounted(async () => {
   try {
-    const res = await pageQuery(1, 8)
-    products.value = res.data.data || []
+    // request.js 拦截器约定：业务成功直接 resolve Result 包络，res.data 即业务数据
+    const [hotRes, newRes] = await Promise.all([
+      recommend('hot', 8),
+      recommend('new', 8)
+    ])
+    hotProducts.value = (hotRes && hotRes.data) || []
+    newProducts.value = (newRes && newRes.data) || []
   } catch (error) {
-    console.error('加载商品失败:', error)
+    console.error('加载推荐商品失败:', error)
   } finally {
     loading.value = false
+  }
+  try {
+    const bannerRes = await listBanners()
+    banners.value = (bannerRes && bannerRes.data) || []
+    startCarousel()
+  } catch (error) {
+    console.error('加载运营位失败:', error)
   }
 })
 </script>
@@ -246,6 +335,80 @@ onMounted(async () => {
   color: var(--color-text-tertiary);
 }
 
+/* ========== 运营位轮播 ========== */
+.banner-zone {
+  margin-bottom: 48px;
+}
+
+.banner-stage {
+  position: relative;
+  border-radius: var(--radius-lg, 16px);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-border-light);
+  aspect-ratio: 21 / 7;
+  min-height: 160px;
+  background: var(--color-surface);
+}
+
+.banner-slide {
+  position: absolute;
+  inset: 0;
+  display: block;
+  text-decoration: none;
+}
+
+.banner-slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.banner-title {
+  position: absolute;
+  left: 24px;
+  bottom: 20px;
+  padding: 8px 18px;
+  border-radius: var(--radius-full, 999px);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  max-width: calc(100% - 48px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.banner-dots {
+  position: absolute;
+  right: 20px;
+  bottom: 16px;
+  display: flex;
+  gap: 8px;
+  z-index: 1;
+}
+
+.banner-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.banner-dot.active {
+  background: #fff;
+  transform: scale(1.15);
+}
+
 /* ========== 热门商品 ========== */
 .section-header {
   display: flex;
@@ -343,6 +506,21 @@ onMounted(async () => {
 
   .hero {
     padding: 60px 20px 80px;
+  }
+
+  .banner-zone {
+    margin-bottom: 32px;
+  }
+
+  .banner-title {
+    left: 12px;
+    bottom: 12px;
+    font-size: 13px;
+  }
+
+  .banner-stage {
+    aspect-ratio: 16 / 9;
+    min-height: 120px;
   }
 
   .product-grid {
