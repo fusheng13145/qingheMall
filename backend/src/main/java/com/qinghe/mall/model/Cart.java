@@ -24,6 +24,7 @@ public class Cart {
     private Double size;
     private BigDecimal price;
     private Integer stock;
+    private Long merchantId;
 
     public Long getId() {
         return id;
@@ -120,6 +121,9 @@ public class Cart {
     public void setPrice(BigDecimal price) {
         this.price = price;
     }
+
+    public Long getMerchantId() { return merchantId; }
+    public void setMerchantId(Long merchantId) { this.merchantId = merchantId; }
 
     public Integer getStock() {
         return stock;

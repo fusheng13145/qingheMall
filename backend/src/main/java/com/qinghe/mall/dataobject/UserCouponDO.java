@@ -28,6 +28,8 @@ public class UserCouponDO {
     private BigDecimal couponDiscount;
     private BigDecimal couponMaxDiscount;
     private Date couponEndTime;
+    /** 券模板归属商家（NULL=平台券；购物车级分摊的店铺券范围判定用，v1.8） */
+    private Long couponMerchantId;
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -72,5 +74,7 @@ public class UserCouponDO {
     public void setCouponMaxDiscount(BigDecimal couponMaxDiscount) { this.couponMaxDiscount = couponMaxDiscount; }
 
     public Date getCouponEndTime() { return couponEndTime; }
+    public Long getCouponMerchantId() { return couponMerchantId; }
+    public void setCouponMerchantId(Long couponMerchantId) { this.couponMerchantId = couponMerchantId; }
     public void setCouponEndTime(Date couponEndTime) { this.couponEndTime = couponEndTime; }
 }

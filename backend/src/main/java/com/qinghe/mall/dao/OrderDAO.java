@@ -97,4 +97,12 @@ public interface OrderDAO {
             @Param("merchantId") Long merchantId,
             @Param("statuses") java.util.List<String> statuses,
             @Param("after") java.util.Date after);
+
+    /**
+     * 购物车级优惠券（v1.8）释放守卫：统计同用户仍持有该券、且订单未到终态的其它订单数。
+     * 仅当计数为 0（本单是最后一张持券在途单）时方可释放券，防止部分退款/取消导致整券误还。
+     */
+    int countActiveByCouponExcluding(@Param("couponId") String couponId,
+                                     @Param("userId") Long userId,
+                                     @Param("excludeOrderNumber") String excludeOrderNumber);
 }

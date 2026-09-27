@@ -338,6 +338,51 @@ step('推荐位：hot 热销（销量降序）/ new 新品（上架时间降序�
   ok(bad.status === 200 && bad.data && bad.data.success === false, '非法场景被拒绝', bad.data)
 }
 
+// ============ 十二、购物车级优惠券（v1.8） ============
+step('多单平台券分摊：两店合计门槛 → 按比例分摊 → 部分退款不还券 → 取消末单还券')
+{
+  const [st, et] = win()
+  const c = await expectOk(await admin('POST', '/api/admin/coupon/create', { json: {
+    name: `冒烟购物车券${ts}`, type: 'FULL_REDUCTION', threshold: 100, amount: 30, discount: 1,
+    total: 100, perLimit: 1, startTime: st, endTime: et
+  } }), '平台券创建（满100减30）')
+  await expectOk(await cust('POST', '/api/coupon/claim', { form: { couponId: c.id } }), '顾客领券')
+  const mine0 = await expectOk(await cust('GET', '/api/coupon/mine'), '我的券')
+  const uc = (mine0 || []).find(u => u.couponId === c.id)
+  ok(uc != null && uc.status === 'UNUSED', '券实例待使用', uc && uc.status)
+
+  // 两店两单：商家商品 128 元 + 平台种子商品 799 元 → 合计 927 ≥ 100
+  const arr = await expectOk(await cust('POST', '/api/order/batchAdd', { json: [
+    { productDetailId: detailId, quantity: 1, couponId: uc.id, discountAmount: 30,
+      receiverName: '冒烟收货人', receiverPhone: '13900000000', receiverAddress: '北京市海淀区冒烟大厦 1 号' },
+    { productDetailId: 'pd001', quantity: 1,
+      receiverName: '冒烟收货人', receiverPhone: '13900000000', receiverAddress: '北京市海淀区冒烟大厦 1 号' }
+  ] }), '两店批量下单（整单用券）')
+  const orders = Array.isArray(arr) ? arr : [arr]
+  ok(orders.length === 2, '生成 2 笔订单', orders.length)
+  const sumDiscount = orders.reduce((s, o) => s + Number(o.discountAmount), 0)
+  ok(Math.abs(sumDiscount - 30) < 0.001, '分摊守恒：Σ分摊 == 30', sumDiscount)
+  ok(orders.every(o => Number(o.discountAmount) > 0), '两单均分得优惠')
+  ok(orders.every(o => o.couponId === uc.id), '两单均关联券实例（追溯用）')
+  ok(orders.every(o => Math.abs(Number(o.totalPrice) + Number(o.discountAmount)
+    - Number(o.productDetail ? o.productDetail.price : 0)) < 0.01), '实付 = 原价 − 分摊')
+
+  // 第一单（商家单）支付后仅退款：另一单仍在途 → 券不归还
+  const orderD = orders[0]
+  await expectOk(await cust('POST', '/api/pay/create', { json: { orderNumber: orderD.orderNumber, payType: 'WECHAT' } }), '订单 D 支付创建')
+  await expectOk(await cust('POST', '/api/pay/mockPay', { json: { orderNumber: orderD.orderNumber } }), '订单 D 模拟支付')
+  await expectOk(await cust('POST', '/api/order/refund/apply', { form: { orderNumber: orderD.orderNumber, reason: '冒烟-多单部分退款' } }), '订单 D 退款申请')
+  await expectOk(await merch('POST', '/api/merchant/order/refund/process', { form: { orderNumber: orderD.orderNumber, approve: 'true', comment: '冒烟同意' } }), '订单 D 退款通过')
+  const mine1 = await expectOk(await cust('GET', '/api/coupon/mine'), '部分退款后我的券')
+  ok((mine1 || []).find(u => u.id === uc.id).status === 'USED', '部分退款不还整券（仍 USED）')
+
+  // 第二单（平台单）取消：本单为最后持券在途单 → 券归还
+  const orderE = orders[1]
+  await expectOk(await cust('POST', '/api/order/cancel', { form: { orderNumber: orderE.orderNumber } }), '订单 E 取消（末单持券）')
+  const mine2 = await expectOk(await cust('GET', '/api/coupon/mine'), '取消末单后我的券')
+  ok((mine2 || []).find(u => u.id === uc.id).status === 'UNUSED', '最后持券在途单取消 → 券归还（UNUSED）')
+}
+
 console.log(`\n===== 冒烟完成：${stepNo} 步 / ${passCount} 项断言全部通过 =====`)
 console.log(`商品 ${productId}（SKU ${detailId}），商家 ${merchantId}`)
 console.log(`订单 A（仅退款）${orderA.orderNumber} / 订单 B（退货退款）${orderB.orderNumber} / 订单 C（平台券）${orderC.orderNumber}`)

@@ -226,8 +226,11 @@ public class RefundServiceImpl implements RefundService {
             throw new BusinessException("订单状态已变化，无法完成退款");
         }
         restoreStockForRefund(order);
-        // 订单已全额退款并关闭交易：归还优惠券（与取消订单口径一致）
-        if (StringUtils.isNotBlank(order.getCouponId())) {
+        // 订单已全额退款并关闭交易：归还优惠券（与取消订单口径一致）。
+        // 购物车级用券（v1.8）：仅当本单是最后一张持券在途单时才归还，部分退款不还整券
+        if (StringUtils.isNotBlank(order.getCouponId())
+                && orderDAO.countActiveByCouponExcluding(
+                        order.getCouponId(), order.getUserId(), order.getOrderNumber()) == 0) {
             couponService.releaseCoupon(order.getCouponId());
         }
         // A2：若该订单已确认收货分账（EARN 存在），退款通过即冲销商家货款（幂等；未分账订单自动跳过）

@@ -55,6 +55,12 @@ public interface CouponService {
     /** 释放：USED→UNUSED 并清空订单绑定（取消订单/退款拒绝时调用） */
     void releaseCoupon(String userCouponId);
 
+    /**
+     * 按用户券实例 ID 解析券模板（v1.8 购物车级核销）：
+     * 下单链路据此区分平台券（merchant_id=NULL，整单分摊）与店铺券（仅本店订单分摊）。
+     */
+    com.qinghe.mall.dataobject.CouponDO findCouponByUserCouponId(String userCouponId);
+
     // ===== 商家端（#39 商家自建） =====
     /** 商家自建券：强制 merchantId 归属，复用平台券校验规则 */
     CouponDO createMerchantCoupon(Long merchantId, CouponDO coupon);

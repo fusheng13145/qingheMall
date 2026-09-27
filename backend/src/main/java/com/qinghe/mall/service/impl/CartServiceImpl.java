@@ -163,6 +163,8 @@ public class CartServiceImpl implements CartService {
             if (product != null) {
                 cart.setProductName(product.getName());
                 cart.setProductImg(firstImg(product.getProductImgs()));
+                // 购物车级优惠券（v1.8）：前端按商家维度计算店铺券可核销合计
+                cart.setMerchantId(product.getMerchantId());
             }
         }
         return cart;

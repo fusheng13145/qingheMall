@@ -201,4 +201,13 @@
         GROUP BY status
     </select>
 
+    <!-- 购物车级优惠券（v1.8）释放守卫：同用户同券、未到终态（未退款/未关闭）的其它在途订单数 -->
+    <select id="countActiveByCouponExcluding" resultType="int">
+        SELECT COUNT(*)
+        FROM `order`
+        WHERE coupon_id = #{couponId}
+          AND user_id = #{userId}
+          AND order_number != #{excludeOrderNumber}
+          AND status NOT IN ('TRADE_REFUNDED', 'TRADE_CLOSED')
+    </select>
 </mapper>

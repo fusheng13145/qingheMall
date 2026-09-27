@@ -3,6 +3,7 @@ package com.qinghe.mall.service.impl;
 import com.qinghe.mall.exception.BusinessException;
 import com.qinghe.mall.dao.OrderDAO;
 import com.qinghe.mall.dao.CommentDAO;
+import com.qinghe.mall.dataobject.CouponDO;
 import com.qinghe.mall.dataobject.OrderDO;
 import com.qinghe.mall.model.Order;
 import com.qinghe.mall.model.OrderStatus;
@@ -18,12 +19,14 @@ import com.qinghe.mall.service.StockLogService;
 import com.qinghe.mall.service.UserService;
 import com.qinghe.mall.util.UUIDUtils;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -116,6 +119,19 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Order createOrder(Order order, String userCouponId, BigDecimal discountAmount) {
+        // 单笔入口保持既有语义：事务内锁券 + 后端权威复算逐单比对（防伪造）
+        return doCreateOrder(order, userCouponId, discountAmount, true, true);
+    }
+
+    /**
+     * 下单核心（v1.8 拆分）：
+     * @param lockCoupon     是否在事务内原子锁定用户券（购物车级多单分摊仅首单锁定，
+     *                       user_coupon 单行 CAS 只能绑定一个单号，其余单以 coupon_id 关联追溯）
+     * @param validateAmount 是否按「该笔原价复算比对」校验传入优惠额；
+     *                       批量分摊场景由 batch 层以可核销合计口径统一校验，逐单分摊额不再复算
+     */
+    private Order doCreateOrder(Order order, String userCouponId, BigDecimal discountAmount,
+                                boolean lockCoupon, boolean validateAmount) {
         String productDetailId = order.getProductDetailId();
         if (productDetailId == null) {
             throw new BusinessException("商品规格ID不能为空");
@@ -176,15 +192,20 @@ public class OrderServiceImpl implements OrderService {
                         if (discountAmount == null) {
                             throw new BusinessException("优惠金额缺失");
                         }
-                        // A1：核销前二次权威校验（归属/未用/上架/时间窗/门槛/店铺归属一致性），
-                        // 并以后端计算值为准比对传入优惠额，直接调用本方法也无法伪造优惠金额
-                        BigDecimal computed = couponService.validateAndComputeDiscount(
-                                userCouponId, order.getUserId(), originalTotal, merchantId);
-                        if (discountAmount.compareTo(computed) != 0) {
-                            throw new BusinessException("优惠金额校验失败");
+                        if (validateAmount) {
+                            // A1：核销前二次权威校验（归属/未用/上架/时间窗/门槛/店铺归属一致性），
+                            // 并以后端计算值为准比对传入优惠额，直接调用本方法也无法伪造优惠金额
+                            BigDecimal computed = couponService.validateAndComputeDiscount(
+                                    userCouponId, order.getUserId(), originalTotal, merchantId);
+                            if (discountAmount.compareTo(computed) != 0) {
+                                throw new BusinessException("优惠金额校验失败");
+                            }
                         }
-                        // 锁定用户券（CAS：仅本人未使用的券可锁定），并绑定订单号
-                        couponService.lockCoupon(userCouponId, order.getUserId(), orderNumber);
+                        // 锁定用户券（CAS：仅本人未使用的券可锁定），并绑定订单号；
+                        // 购物车级多单分摊（v1.8）仅首单执行锁定，其余单以 coupon_id 关联追溯
+                        if (lockCoupon) {
+                            couponService.lockCoupon(userCouponId, order.getUserId(), orderNumber);
+                        }
                         payable = originalTotal.subtract(discountAmount);
                         if (payable.compareTo(BigDecimal.ZERO) < 0) {
                             payable = BigDecimal.ZERO;
@@ -249,51 +270,158 @@ public class OrderServiceImpl implements OrderService {
         if (orders == null || orders.isEmpty()) {
             throw new BusinessException("下单商品不能为空");
         }
-        // 优惠券：单笔订单专用——整批至多一笔携带券，且整批仅一笔
+        // 优惠券（v1.8 购物车级）：整批至多一张券；
+        // 平台券按整批合计计算门槛并分摊到各单，店铺券仅分摊到本店订单（A1 归属口径不变）
         String userCouponId = null;
+        Order couponOrder = null;
         for (Order o : orders) {
             if (StringUtils.isNotBlank(o.getCouponId())) {
                 if (userCouponId != null) {
                     throw new BusinessException("一次结算仅可使用一张优惠券");
                 }
                 userCouponId = o.getCouponId();
+                couponOrder = o;
             }
         }
-        BigDecimal couponDiscount = null;
-        if (userCouponId != null) {
-            if (orders.size() > 1) {
-                throw new BusinessException("优惠券仅支持单笔订单使用");
+        if (userCouponId == null) {
+            List<Order> created = new ArrayList<>();
+            for (Order order : orders) {
+                created.add(createOrder(order));
             }
-            Order couponOrder = orders.get(0);
-            ProductDetail pd = productDetailService.findById(couponOrder.getProductDetailId());
+            return created;
+        }
+
+        // 解析每笔订单的规格原价与商家归属
+        Map<Order, BigDecimal> originalTotals = new LinkedHashMap<>();
+        Map<Order, Long> merchantIds = new LinkedHashMap<>();
+        for (Order o : orders) {
+            ProductDetail pd = productDetailService.findById(o.getProductDetailId());
             if (pd == null) {
                 throw new BusinessException("商品规格不存在");
             }
-            int qty = couponOrder.getQuantity() != null && couponOrder.getQuantity() > 0
-                    ? couponOrder.getQuantity() : 1;
-            BigDecimal totalOrigin = pd.getPrice().multiply(BigDecimal.valueOf(qty));
-            // 后端权威校验并计算优惠额（校验归属/未用/上架/时间窗/门槛/店铺归属一致性——A1：
-            // 店铺券仅可核销于本店商品，平台券全站可用）
-            Product couponProduct = productService.findById(pd.getProductId());
-            Long productMerchantId = couponProduct != null ? couponProduct.getMerchantId() : null;
-            BigDecimal computed = couponService.validateAndComputeDiscount(
-                    userCouponId, couponOrder.getUserId(), totalOrigin, productMerchantId);
-            // 前端传入的优惠额须与后端一致，防止伪造
-            BigDecimal provided = couponOrder.getDiscountAmount();
-            if (provided == null || provided.compareTo(computed) != 0) {
-                throw new BusinessException("优惠金额校验失败");
-            }
-            couponDiscount = computed;
+            int qty = o.getQuantity() != null && o.getQuantity() > 0 ? o.getQuantity() : 1;
+            originalTotals.put(o, pd.getPrice().multiply(BigDecimal.valueOf(qty)));
+            Product product = productService.findById(pd.getProductId());
+            merchantIds.put(o, product != null ? product.getMerchantId() : null);
         }
+
+        // 可核销集合：平台券（merchant_id=NULL）为整批；店铺券仅本店订单（空集即跨店误用，拒绝）
+        CouponDO coupon = couponService.findCouponByUserCouponId(userCouponId);
+        if (coupon == null) {
+            throw new BusinessException("优惠券不存在");
+        }
+        List<Order> eligible = new ArrayList<>();
+        BigDecimal eligibleTotal = BigDecimal.ZERO;
+        for (Order o : orders) {
+            if (coupon.getMerchantId() == null || coupon.getMerchantId().equals(merchantIds.get(o))) {
+                eligible.add(o);
+                eligibleTotal = eligibleTotal.add(originalTotals.get(o));
+            }
+        }
+        if (eligible.isEmpty()) {
+            throw new BusinessException("店铺券仅可用于本店商品");
+        }
+
+        // 后端权威校验并按可核销合计计算总优惠额（归属/未用/上架/时间窗/门槛/店铺一致性）
+        BigDecimal computedTotal = couponService.validateAndComputeDiscount(
+                userCouponId, couponOrder.getUserId(), eligibleTotal, coupon.getMerchantId());
+        // 防伪造：前端传入的合计优惠额（挂载在携券那笔）须与后端一致
+        BigDecimal provided = couponOrder.getDiscountAmount();
+        if (provided == null || provided.compareTo(computedTotal) != 0) {
+            throw new BusinessException("优惠金额校验失败");
+        }
+
+        // 按比例分摊到各可核销订单（分币守恒：Σ分摊 == 总优惠额）
+        List<BigDecimal> allocations = allocateDiscount(computedTotal, eligible, originalTotals);
+
         List<Order> created = new ArrayList<>();
-        for (Order order : orders) {
-            // 仅携带券的那一笔传优惠券参数（单笔专用，其余为 null）
-            boolean hasCoupon = StringUtils.equals(order.getCouponId(), userCouponId);
-            created.add(createOrder(order,
-                    hasCoupon ? userCouponId : null,
-                    hasCoupon ? couponDiscount : null));
+        boolean couponLocked = false;
+        for (Order o : orders) {
+            int eligibleIdx = eligible.indexOf(o);
+            if (eligibleIdx < 0) {
+                // 店铺券批次中的非本店订单：不参与核销，按原价下单
+                created.add(createOrder(o));
+                continue;
+            }
+            // 首个可核销订单锁定用户券（user_coupon 单行 CAS 只能绑定一个单号）
+            boolean lock = !couponLocked;
+            couponLocked = true;
+            created.add(doCreateOrder(o, userCouponId, allocations.get(eligibleIdx), lock, false));
         }
         return created;
+    }
+
+    /**
+     * 优惠分摊（v1.8）：按各单原价占比把总优惠额拆到「分」。
+     * ① Hamilton 最大余数法保证 Σ分摊 == 总优惠额（金额列 DECIMAL(10,2)，以分为最小单位）；
+     * ② 单笔分摊若超过该笔原价（无门槛券 + 极小单的病态边界）则钳制，损失余额按最大余量逐分回填；
+     * 总优惠额恒 ≤ 可核销合计（calculateDiscount 已按合计封顶），故回填必有可行解。
+     */
+    private List<BigDecimal> allocateDiscount(BigDecimal totalDiscount, List<Order> eligibleOrders,
+                                              Map<Order, BigDecimal> originalTotals) {
+        int n = eligibleOrders.size();
+        long totalCents = totalDiscount.movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact();
+        long[] originalCents = new long[n];
+        long originalSum = 0;
+        for (int i = 0; i < n; i++) {
+            originalCents[i] = originalTotals.get(eligibleOrders.get(i)).movePointRight(2)
+                    .setScale(0, RoundingMode.HALF_UP).longValueExact();
+            originalSum += originalCents[i];
+        }
+        long[] alloc = new long[n];
+        long[] remainders = new long[n];
+        long distributed = 0;
+        for (int i = 0; i < n; i++) {
+            long exact = totalCents * originalCents[i];
+            alloc[i] = originalSum == 0 ? 0 : exact / originalSum;
+            remainders[i] = originalSum == 0 ? 0 : exact % originalSum;
+            distributed += alloc[i];
+        }
+        // Hamilton：余数大者优先 +1（并列取小索引，保证确定性）
+        long leftover = totalCents - distributed;
+        while (leftover > 0) {
+            int best = -1;
+            for (int i = 0; i < n; i++) {
+                if (remainders[i] < 0) {
+                    continue;
+                }
+                if (best < 0 || remainders[i] > remainders[best]) {
+                    best = i;
+                }
+            }
+            alloc[best]++;
+            remainders[best] = -1;
+            leftover--;
+        }
+        // 病态边界钳制：单笔分摊 ≤ 该笔原价，损失余额按最大余量逐分回填
+        distributed = 0;
+        for (int i = 0; i < n; i++) {
+            if (alloc[i] > originalCents[i]) {
+                alloc[i] = originalCents[i];
+            }
+            distributed += alloc[i];
+        }
+        while (distributed < totalCents) {
+            int best = -1;
+            long headroom = -1;
+            for (int i = 0; i < n; i++) {
+                long h = originalCents[i] - alloc[i];
+                if (h > headroom) {
+                    headroom = h;
+                    best = i;
+                }
+            }
+            if (best < 0 || headroom <= 0) {
+                break;
+            }
+            alloc[best]++;
+            distributed++;
+        }
+        List<BigDecimal> result = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            result.add(BigDecimal.valueOf(alloc[i], 2));
+        }
+        return result;
     }
 
     @Override
@@ -527,8 +655,11 @@ public class OrderServiceImpl implements OrderService {
             // 库存流水留痕（与回滚同事务）
             stockLogService.record(detailId, detail != null ? detail.getProductId() : null, orderNumber,
                     changeType, quantity, beforeStock, beforeStock + quantity);
-            // 取消订单：释放被核销的优惠券（归属/已用由 CAS 守卫保障）
-            if (StringUtils.isNotBlank(orderDO.getCouponId())) {
+            // 取消订单：释放被核销的优惠券（归属/已用由 CAS 守卫保障）。
+            // 购物车级用券（v1.8）：仅当本单是最后一张持券在途单时才归还，防止整券误还
+            if (StringUtils.isNotBlank(orderDO.getCouponId())
+                    && orderDAO.countActiveByCouponExcluding(
+                            orderDO.getCouponId(), orderDO.getUserId(), orderDO.getOrderNumber()) == 0) {
                 couponService.releaseCoupon(orderDO.getCouponId());
             }
             // 秒杀订单回滚：仅当 seckill_order 为 CREATED 时恢复活动库存并置 CANCELLED

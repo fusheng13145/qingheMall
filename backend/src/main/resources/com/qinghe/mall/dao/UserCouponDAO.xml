@@ -19,13 +19,14 @@
         <result column="coupon_discount" property="couponDiscount" jdbcType="DECIMAL"/>
         <result column="coupon_max_discount" property="couponMaxDiscount" jdbcType="DECIMAL"/>
         <result column="coupon_end_time" property="couponEndTime" jdbcType="TIMESTAMP"/>
+        <result column="coupon_merchant_id" property="couponMerchantId" jdbcType="BIGINT"/>
     </resultMap>
 
     <sql id="Base_Column_List">
         uc.id, uc.user_id, uc.coupon_id, uc.status, uc.order_number, uc.used_time,
         uc.gmt_created, uc.gmt_modified,
         c.name AS coupon_name, c.type AS coupon_type, c.threshold, c.amount AS coupon_amount,
-        c.discount AS coupon_discount, c.max_discount AS coupon_max_discount, c.end_time AS coupon_end_time
+        c.discount AS coupon_discount, c.max_discount AS coupon_max_discount, c.end_time AS coupon_end_time, c.merchant_id AS coupon_merchant_id
     </sql>
 
     <insert id="insert" parameterType="com.qinghe.mall.dataobject.UserCouponDO">

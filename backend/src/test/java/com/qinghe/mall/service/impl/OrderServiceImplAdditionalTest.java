@@ -273,6 +273,11 @@ class OrderServiceImplAdditionalTest {
         when(productDetailService.findById("pd1")).thenReturn(detail("pd1", new BigDecimal("100.00"), 50));
         when(couponService.validateAndComputeDiscount("c1", 1L, new BigDecimal("100.00"), null))
                 .thenReturn(new BigDecimal("20.00"));
+        // v1.8 购物车级：批量核销先经 findCouponByUserCouponId 判定平台券/店铺券
+        com.qinghe.mall.dataobject.CouponDO platform = new com.qinghe.mall.dataobject.CouponDO();
+        platform.setId("cpt1");
+        platform.setMerchantId(null);
+        when(couponService.findCouponByUserCouponId("c1")).thenReturn(platform);
         mockCreateOrderHappyPath();
         // lockCoupon 为 void，无需 stub
 

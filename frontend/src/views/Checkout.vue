@@ -29,8 +29,8 @@
         </div>
       </section>
 
-      <!-- 优惠券（仅单笔订单可用） -->
-      <section v-if="couponEnabled" class="panel">
+      <!-- 优惠券（v1.8：购物车级，多商品结算可用；平台券按整单合计、店铺券按本店合计） -->
+      <section class="panel">
         <h2 class="panel-title">优惠券</h2>
         <div v-if="availableList.length === 0" class="coupon-empty">暂无可用优惠券</div>
         <div v-else class="coupon-list">
@@ -45,7 +45,7 @@
               <span class="coupon-name">{{ c.couponName }}</span>
               <span class="coupon-rule">{{ couponRuleText(c) }}</span>
             </div>
-            <span class="coupon-discount">-¥{{ formatPrice(calcCouponDiscount(c, totalPrice)) }}</span>
+            <span class="coupon-discount">-¥{{ formatPrice(couponDiscountFor(c)) }}</span>
           </label>
         </div>
       </section>
@@ -102,13 +102,24 @@ const items = computed(() => cartStore.selectedItems)
 const submitting = ref(false)
 const receiver = ref({ name: '', phone: '', address: '' })
 
-// 优惠券（仅单笔订单可用）
+// 优惠券（v1.8 购物车级）：平台券（couponMerchantId=NULL）按整单合计算优惠，
+// 店铺券仅按本店商品合计计算（后端 batchAdd 权威复算并按比例分摊到各单）
 const availableList = ref([])
 const selectedId = ref('')
-const couponEnabled = computed(() => items.value.length === 1)
 const selectedCoupon = computed(() => availableList.value.find(c => c.id === selectedId.value) || null)
-const selectedDiscount = computed(() =>
-  selectedCoupon.value ? calcCouponDiscount(selectedCoupon.value, totalPrice.value) : 0)
+
+function couponEligibleTotal(c) {
+  if (!c || c.couponMerchantId == null) return totalPrice.value
+  return items.value
+    .filter(i => i.merchantId === c.couponMerchantId)
+    .reduce((sum, i) => sum + (i.price || 0) * i.quantity, 0)
+}
+
+function couponDiscountFor(c) {
+  return c ? calcCouponDiscount(c, couponEligibleTotal(c)) : 0
+}
+
+const selectedDiscount = computed(() => couponDiscountFor(selectedCoupon.value))
 const payableAmount = computed(() => Math.max(0, totalPrice.value - selectedDiscount.value))
 
 const totalCount = computed(() => items.value.reduce((sum, i) => sum + i.quantity, 0))
@@ -126,11 +137,11 @@ function formatSize(size) {
 onMounted(async () => {
   try {
     await cartStore.fetchItems()
-    // 单笔订单时拉取可用券（多商品不支持用券，避免跨单分摊）
-    if (items.value.length === 1) {
+    // 拉取可用券（v1.8：多商品结算同样支持；过滤本单可核销优惠为 0 的券）
+    if (items.value.length > 0) {
       try {
         const cRes = await availableCoupons(totalPrice.value)
-        availableList.value = cRes.data || []
+        availableList.value = (cRes.data || []).filter(c => couponDiscountFor(c) > 0)
       } catch (e) { /* 优惠券非强依赖，忽略 */ }
     }
   } catch (e) {
@@ -176,7 +187,7 @@ async function handleSubmit() {
       receiverPhone: receiver.value.phone,
       receiverAddress: receiver.value.address
     }))
-    // 单笔订单可用券：将券与优惠额附加到该订单（后端二次校验）
+    // 购物车级用券（v1.8）：券与合计优惠额挂到首单，后端按可核销合计权威复算并分摊到各单
     if (selectedCoupon.value) {
       orders[0].couponId = selectedCoupon.value.id
       orders[0].discountAmount = selectedDiscount.value

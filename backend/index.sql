@@ -69,6 +69,7 @@ CREATE TABLE `order` (
     `gmt_modified` datetime NOT NULL COMMENT '修改时间',
     PRIMARY KEY (`id`, `gmt_created`),
     UNIQUE KEY uk_order_number (`order_number`, `gmt_created`) COMMENT 'P1-5：订单号唯一约束（复合化含分区键，防生成碰撞兜底）',
+    KEY idx_coupon_id (`coupon_id`) COMMENT 'v1.8 购物车级用券：同券在途订单守卫查询',
     KEY idx_user_id (`user_id`),
     KEY idx_merchant_id (`merchant_id`) COMMENT '商家订单索引',
     KEY idx_status_created (`status`, `gmt_created`) COMMENT 'P1-9：超时关单/报表/状态聚合'

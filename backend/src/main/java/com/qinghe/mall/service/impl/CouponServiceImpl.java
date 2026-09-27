@@ -316,4 +316,13 @@ public class CouponServiceImpl implements CouponService {
     public void releaseCoupon(String userCouponId) {
         userCouponDAO.release(userCouponId);
     }
+
+    @Override
+    public com.qinghe.mall.dataobject.CouponDO findCouponByUserCouponId(String userCouponId) {
+        UserCouponDO uc = userCouponDAO.findById(userCouponId);
+        if (uc == null) {
+            return null;
+        }
+        return couponDAO.findById(uc.getCouponId());
+    }
 }
