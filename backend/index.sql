@@ -387,6 +387,12 @@ INSERT INTO `product_detail` VALUES ('pd046', 'p014', 129.00, 1.00, 100, '2024-0
 INSERT INTO `product_detail` VALUES ('pd047', 'p015', 219.00, 1.00, 90, '2024-02-07 10:00:00', '2024-02-07 10:00:00');
 INSERT INTO `product_detail` VALUES ('pd048', 'p016', 99.00, 1.00, 110, '2024-02-08 10:00:00', '2024-02-08 10:00:00');
 
+-- ==================== 演示秒杀活动种子（D1/v1.9：全新库即有进行中秒杀，保障移动端 e2e 可跑） ====================
+INSERT INTO `seckill_activity` (id, product_detail_id, seckill_price, total_stock, remain_stock, start_time, end_time, status, merchant_id)
+VALUES
+('skseed001', 'pd001', 599.00, 20, 20, '2025-01-01 00:00:00', '2035-01-01 00:00:00', 'ONGOING', NULL),
+('skseed002', 'pd012', 59.00, 50, 50, '2025-01-01 00:00:00', '2035-01-01 00:00:00', 'ONGOING', NULL);
+
 -- ==================== 商家结算分账 + 评价回复（A2/A4，v1.5，结构与 v2.9 迁移一致） ====================
 
 -- 分账流水表（订单确认收货分账 EARN / 退款审核通过冲销 REVERSAL；net 带符号，gross/commission 恒正）

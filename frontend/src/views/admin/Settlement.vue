@@ -119,4 +119,13 @@ onMounted(() => load(1))
 .btn-reject { background: #ef4444; color: #fff; border: none; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
 .reviewed-note { color: #9ca3af; font-size: 12px; }
 .empty-cell { text-align: center; color: #9ca3af; }
+
+/* ========== D1（v1.9）移动端适配：控制台表格横向滚动（口径见 qinghe-skins.css --sheet-* 令牌） ========== */
+@media (max-width: 640px) {
+  .data-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
 </style>

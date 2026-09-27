@@ -199,8 +199,11 @@
    弹窗（modal-overlay/modal）在 ≤640px 统一「底部 sheet」形态：
    align-items: flex-end + 顶部圆角 + 88vh 限高内滚；
    控制台表格（data-table）统一 display:block + 横向滚动。
-   各页面 scoped 实现须与此口径一致（用户端 Orders / 商家端 Orders
-   三弹窗、admin·merchant 表格均已接入）。
+   各页面 scoped 实现须与此口径一致。已接入（v1.6）：用户端/商家端 Orders
+   三弹窗、admin/merchant Orders 表格；已接入（v1.9）：Profile 入驻申请、
+   Seckill 秒杀详情、admin/merchant Products 商品弹窗，及 admin
+   Products/Users/Merchants/Coupons/Seckill/Settlement、merchant
+   Products/Settlement/Marketing 全部控制台表格。
    ============================================================ */
 :root {
   --sheet-breakpoint: 640px;

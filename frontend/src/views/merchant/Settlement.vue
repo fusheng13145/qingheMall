@@ -120,4 +120,13 @@ onMounted(async () => {
 .panel-title { margin: 0 0 12px; font-size: 15px; }
 .empty-cell { text-align: center; color: #9ca3af; }
 .net-negative { color: #ef4444; }
+
+/* ========== D1（v1.9）移动端适配：控制台表格横向滚动（口径见 qinghe-skins.css --sheet-* 令牌） ========== */
+@media (max-width: 640px) {
+  .data-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
 </style>

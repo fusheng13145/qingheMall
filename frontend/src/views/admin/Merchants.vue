@@ -300,4 +300,13 @@ onMounted(() => load(1))
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ========== D1（v1.9）移动端适配：控制台表格横向滚动（口径见 qinghe-skins.css --sheet-* 令牌） ========== */
+@media (max-width: 640px) {
+  .data-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
 </style>

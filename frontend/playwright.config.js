@@ -25,6 +25,15 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      // 桌面项目跑全链路冒烟；移动端专用用例由 mobile-chromium 项目承接
+      testIgnore: '**/*.mobile.e2e.js',
+    },
+    {
+      // D1（v1.9）：移动端视口项目——验证弹窗 sheet 化等移动端口径。
+      // 设备取 iPhone 13 视口/UA/触屏，但内核用 chromium（与 CI 仅安装 Chromium 对齐，不引入 WebKit 依赖）
+      name: 'mobile-chromium',
+      use: { ...devices['iPhone 13'], browserName: 'chromium' },
+      testMatch: '**/*.mobile.e2e.js',
     },
   ],
   webServer: {

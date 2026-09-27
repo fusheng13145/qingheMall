@@ -380,4 +380,46 @@ async function handleLogout() {
     gap: 16px;
   }
 }
+
+/* ========== D1（v1.9）移动端适配：头部紧凑化，消除横向溢出 ========== */
+@media (max-width: 640px) {
+  .header-inner {
+    padding: 0 12px;
+  }
+
+  .logo-text {
+    display: none;
+  }
+
+  .header-left {
+    gap: 8px;
+    min-width: 0;
+  }
+
+  /* 导航图标条自身横向滑动，不撑破页面（.nav-link 图标 7 项 ≥ 280px） */
+  .nav-links {
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .nav-links::-webkit-scrollbar {
+    display: none;
+  }
+
+  .auth-section {
+    gap: 6px;
+  }
+
+  .btn-login,
+  .btn-register {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .theme-toggle {
+    width: 32px;
+    height: 32px;
+  }
+}
 </style>
